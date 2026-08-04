@@ -1,0 +1,1201 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>批量邮件后台</title>
+<style>
+  :root{
+    --bg:#f4f6f9; --surface:#fff; --surface-2:#fafbfc;
+    --line:#e5e7eb; --line-2:#eef0f3;
+    --ink:#1f2329; --sub:#5b6471;
+    --brand:#2f6fed; --brand-d:#1d4ed8; --brand-100:#eef2ff;
+    --ok:#16a34a; --ok-100:#dcfce7;
+    --warn:#d97706; --warn-100:#fef3c7;
+    --err:#dc2626; --err-100:#fee2e2; --danger:#dc2626; --danger-100:#fee2e2;
+    --radius-sm:8px; --radius:12px; --radius-lg:16px;
+    --shadow-sm:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.05);
+    --shadow:0 4px 14px rgba(16,24,40,.09);
+    --shadow-lg:0 16px 40px rgba(16,24,40,.18);
+    --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    --font-mono:"SF Mono",Menlo,Consolas,"Courier New",monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--font);background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  :focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:4px}
+  header{background:var(--surface);border-bottom:1px solid var(--line);padding:14px var(--sp-5);display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:20}
+  header h1{font-size:17px;margin:0;font-weight:600;letter-spacing:.2px}
+  header .tag{font-size:12px;color:var(--brand);background:var(--brand-100);padding:3px 10px;border-radius:999px;font-weight:500}
+  .wrap{max-width:1080px;margin:0 auto;padding:var(--sp-5) var(--sp-5) 64px}
+
+  /* ---- Tabs ---- */
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:18px 0 22px}
+  .tabs button{background:var(--surface);border:1px solid var(--line);padding:9px 16px;font-size:14px;color:var(--sub);cursor:pointer;border-radius:999px;transition:all .15s ease;font-family:inherit}
+  .tabs button:hover{color:var(--ink);border-color:#cbd5e1;background:var(--surface-2)}
+  .tabs button.active{background:var(--brand);color:#fff;border-color:var(--brand);font-weight:600;box-shadow:var(--shadow-sm)}
+  .tabs button:focus-visible{outline-offset:3px}
+
+  .panel{display:none}
+  .panel.active{display:block;animation:fade .2s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+  /* ---- Cards / sections ---- */
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-bottom:16px;box-shadow:var(--shadow-sm)}
+  .card h3{margin:0 0 14px;font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px}
+  .card h3::before{content:"";width:4px;height:16px;border-radius:2px;background:var(--brand);display:inline-block}
+
+  label{display:block;font-size:13px;color:var(--sub);margin:12px 0 5px;font-weight:500}
+  input[type=text],input[type=password],textarea,select{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:var(--radius-sm);font-size:14px;font-family:inherit;background:var(--surface);color:var(--ink);transition:border-color .15s,box-shadow .15s}
+  input[type=text]:focus,input[type=password]:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-100)}
+  textarea{resize:vertical;min-height:120px;font-family:var(--font-mono);font-size:13px;line-height:1.6}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .row > div{flex:1;min-width:160px}
+
+  /* ---- Buttons ---- */
+  .btn{background:var(--brand);color:#fff;border:none;padding:9px 18px;border-radius:var(--radius-sm);font-size:14px;cursor:pointer;font-family:inherit;font-weight:500;transition:background .15s,box-shadow .15s,transform .05s}
+  .btn:hover{background:var(--brand-d)}
+  .btn:active{transform:translateY(1px)}
+  .btn.ghost{background:var(--brand-100);color:var(--brand)}
+  .btn.ghost:hover{background:#e0e7ff}
+  .btn.danger{background:var(--danger-100);color:var(--danger)}
+  .btn.danger:hover{background:#fecaca}
+  .btn.sm{padding:6px 12px;font-size:12px;border-radius:6px}
+  .btn:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+
+  /* ---- 报错日志框 ---- */
+  .log-box{margin:8px 0 0;padding:12px;border:1px solid var(--line,#e2e8f0);border-radius:8px;
+    background:#0f172a;color:#e2e8f0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:12px;line-height:1.5;max-height:360px;overflow:auto;white-space:pre-wrap;word-break:break-all}
+  .log-box.has-err{border-color:#ef4444}
+  .log-box:not(.has-err){background:#f8fafc;color:#475569}
+
+  /* ---- Generic tables ---- */
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:10px;border-bottom:1px solid var(--line-2);vertical-align:top}
+  th{color:var(--sub);font-weight:600;background:var(--surface-2);white-space:nowrap;font-size:12px;letter-spacing:.2px}
+  tbody tr:hover{background:var(--surface-2)}
+  tbody tr:nth-child(even){background:#fcfdfe}
+  tbody tr:nth-child(even):hover{background:var(--surface-2)}
+
+  /* ---- Pills / status ---- */
+  .pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;line-height:1.4;white-space:nowrap}
+  .pill.on{background:var(--ok-100);color:var(--ok)} .pill.off{background:var(--err-100);color:var(--err)}
+  .pill.warn{background:var(--warn-100);color:var(--warn)}
+  .err{color:var(--err)} .ok{color:var(--ok)} .muted{color:var(--sub)}
+
+  .preview-box{border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px;background:var(--surface);max-height:340px;overflow:auto}
+  .preview-box h1,.preview-box h2{margin:.4em 0}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:800px){.two-col{grid-template-columns:1fr}}
+
+  /* ---- Modal ---- */
+  /* 兼容 Win7 旧浏览器：弃用 inset:0，改写 top/left/right/bottom；去掉 backdrop-filter 避免绘制缺陷 */
+  .modal-mask{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(16,24,40,.45);display:none;align-items:center;justify-content:center;z-index:50;padding:16px;overflow-y:auto}
+  .modal-mask.show{display:flex;animation:fade .15s ease}
+  /* min-height:0 让 flex 子项能收缩到 max-height:88vh 以内，超高时只滚动 modal 自身而不是溢出视口 */
+  .modal{background:var(--surface);border-radius:var(--radius-lg);padding:24px;width:min(720px,92vw);max-height:88vh;min-height:0;overflow:auto;box-shadow:var(--shadow-lg);border:1px solid var(--line);margin:auto}
+  .modal h3{margin-top:0;font-size:17px}
+  .chk{display:flex;align-items:center;gap:8px;padding:6px 0}
+  .chk input{width:auto}
+
+  /* ---- Toast ---- */
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(8px);background:#1f2329;color:#fff;padding:11px 20px;border-radius:var(--radius-sm);opacity:0;transition:.25s;z-index:99;box-shadow:var(--shadow);font-size:13px}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  .hint{font-size:12px;color:var(--sub);line-height:1.7}
+  code{background:#f1f3f5;padding:1px 6px;border-radius:5px;font-size:12px;font-family:var(--font-mono);color:#475569}
+
+  /* ---- 上传发送 ---- */
+  .banner{background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;padding:11px 15px;border-radius:var(--radius-sm);margin-bottom:14px;font-size:13px;line-height:1.7}
+  .dropzone{border:2px dashed #cfd6df;border-radius:var(--radius);padding:36px 20px;text-align:center;color:var(--sub);cursor:pointer;background:var(--surface-2);transition:all .15s ease;font-size:14px}
+  .dropzone:hover{border-color:var(--brand);background:var(--brand-100)}
+  .dropzone.over{border-color:var(--brand);border-style:solid;background:var(--brand-100);color:var(--brand);box-shadow:0 0 0 4px var(--brand-100)}
+
+  .upGroup{border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin-bottom:14px;background:var(--surface);box-shadow:var(--shadow-sm);overflow-x:auto;transition:border-color .15s,box-shadow .15s}
+  .upGroup.over{border-color:var(--brand);border-style:dashed;box-shadow:0 0 0 4px var(--brand-100);background:#fbfcff;position:relative}
+  .upGroup.over::after{content:"松开以移动到此平台分组";display:block;margin-top:10px;padding:8px 12px;text-align:center;color:var(--brand);background:var(--brand-100);border-radius:var(--radius-sm);font-size:12px;font-weight:600}
+  .upGroup h4{margin:0 0 12px;font-size:14px;display:flex;align-items:center;gap:8px;font-weight:600}
+  .upGroup table{min-width:760px;border-collapse:collapse}
+  .upGroup th{font-size:12px;color:var(--sub);font-weight:600;background:transparent;border-bottom:2px solid var(--line);padding:8px 10px;white-space:nowrap}
+  .upGroup td{padding:12px 10px;border-bottom:1px solid var(--line-2);vertical-align:middle}
+  .upGroup tbody tr:hover td{background:var(--surface-2)}
+  .upGroup tbody tr:nth-child(even) td{background:#fcfdfe}
+  .upGroup tbody tr:nth-child(even):hover td{background:var(--surface-2)}
+
+  .upRow{background:var(--surface);cursor:grab;transition:background .12s}
+  .upRow.dragging{opacity:.45;background:var(--brand-100)}
+  .upRow .grip{color:#9aa3af;font-size:18px;line-height:1;width:22px;text-align:center;cursor:grab;user-select:none}
+  .upRow .grip:hover{color:var(--brand)}
+  .upRow label{margin:0 0 2px}
+  .upRow select,.upRow input{font-size:12px;padding:6px 8px}
+  .upRow select.upPlat{min-width:130px}
+  .upRow select.upType{min-width:110px}
+  .upRow input.upCust{width:100px}
+  /* 核对分组表格：列多易被裁切，加水平滚动容器 + 表格最小宽度 */
+  .upGroup{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:12px}
+  .attCell{max-width:170px}
+  .attList{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px;max-width:160px}
+  .attChip{display:inline-flex;align-items:center;gap:3px;background:var(--brand-100);color:var(--brand-d);border-radius:6px;padding:1px 6px;font-size:11px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .attChip .attX{border:none;background:none;color:var(--brand-d);cursor:pointer;font-weight:700;line-height:1;padding:0 1px}
+  .attAdd{display:inline-block;cursor:pointer;font-size:11px;padding:2px 8px}
+
+  /* ---- 确认发送弹窗：只读核对清单 ---- */
+  #upConfirmBody{border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 12px;background:var(--surface-2)}
+  #upConfirmBody > div > div{border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px;margin-bottom:10px;background:var(--surface);box-shadow:var(--shadow-sm)}
+  #upConfirmBody h4{margin:8px 0 10px;font-size:14px;font-weight:600}
+
+  /* ---- 校验错误高亮 / 就近反馈（microinteractions: 错误态出现在源头附近） ---- */
+  .upRow.row-err{background:var(--err-100);box-shadow:inset 3px 0 0 var(--err)}
+  .upRow.row-err:hover td{background:var(--err-100)}
+  .upRow.row-err .pill.off{font-weight:700}
+  .errDetail td{padding:0 10px 12px;background:var(--err-100);border-bottom:1px solid #fca5a5}
+  .upGroup tbody tr.errDetail:nth-child(even) td,.upGroup tbody tr.errDetail:hover td{background:var(--err-100)}
+  .errDetail .errMsg{background:#fff;border:1px solid #fca5a5;border-radius:6px;padding:8px 13px;color:var(--err);font-size:12px;font-weight:600;display:inline-block;max-width:calc(100% - 42px);line-height:1.5}
+  .err-banner{display:none;align-items:flex-start;gap:8px;background:var(--err-100);color:var(--err);border:1px solid #fca5a5;border-left:4px solid var(--err);padding:11px 15px;border-radius:var(--radius-sm);margin-bottom:14px;font-size:13px;line-height:1.7}
+  .err-banner.show{display:flex}
+  .err-banner b{font-weight:700}
+  .send-warn{color:var(--err);font-size:13px;font-weight:600;margin-left:10px}
+  @keyframes shake{10%,90%{transform:translateX(-1px)}20%,80%{transform:translateX(2px)}30%,50%,70%{transform:translateX(-4px)}40%,60%{transform:translateX(4px)}}
+  .shake{animation:shake .4s ease}
+
+  /* ---- 确认弹窗汇总条 ---- */
+  #upConfirmSummary{display:flex;flex-wrap:wrap;gap:10px 24px;align-items:center;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 16px;margin:0 0 14px;font-size:13px}
+  #upConfirmSummary .sum-item{display:flex;flex-direction:column;line-height:1.3}
+  #upConfirmSummary .sum-num{font-size:20px;font-weight:700;color:var(--ink)}
+  #upConfirmSummary .sum-num.warn{color:var(--err)}
+  #upConfirmSummary .sum-lbl{font-size:11px;color:var(--sub)}
+  #upConfirmSummary .sum-warn{flex-basis:100%;color:var(--err);font-weight:600;font-size:12px;background:var(--err-100);border-radius:6px;padding:7px 11px;margin-top:2px}
+
+  @media(max-width:480px){
+    .wrap{padding:14px 14px 48px}
+    .card{padding:16px}
+    header{padding:12px 16px}
+    .btn{padding:9px 14px}
+  }
+</style>
+<script>
+// 浏览器兼容性检测（必须用 ES5 写法，确保在老 IE 上也能执行）
+(function(){
+  var ua = navigator.userAgent || '';
+  var isIE = /MSIE |Trident\//.test(ua);
+  var is360 = /360SE|360EE|QIHU|360/i.test(ua);
+  var hasPromise = typeof Promise !== 'undefined';
+  var hasIncludes = typeof String.prototype.includes === 'function';
+  if(isIE || !hasPromise || !hasIncludes){
+    window.__oldBrowser = true;
+    document.addEventListener('DOMContentLoaded', function(){
+      var msg;
+      if(is360){
+        msg = '⚠️ 360 浏览器当前处于「兼容模式」(IE 内核)，无法运行本工具。请点击地址栏右侧图标切换到「极速模式」，或改用 <b>Chrome 109</b> / <b>Firefox 115 ESR</b>。';
+      } else {
+        msg = '⚠️ 当前浏览器内核过旧（可能是 IE），无法运行本工具。请改用 <b>Chrome 109</b> 或 <b>Firefox 115 ESR</b>（最后支持 Windows 7 的版本），并设为系统默认浏览器后重试。';
+      }
+      var d = document.createElement('div');
+      d.className = 'old-browser-banner';
+      d.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#b91c1c;color:#fff;padding:14px 18px;font:14px/1.6 Microsoft YaHei,Arial,sans-serif;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.2)';
+      d.innerHTML = msg;
+      document.body.insertBefore(d, document.body.firstChild);
+    });
+  }
+})();
+</script>
+</head>
+<body>
+<header>
+  <h1>📧 批量邮件后台</h1>
+  <span class="tag" id="accountTag">账号未配置</span>
+</header>
+
+<div class="wrap">
+  <div class="tabs">
+    <button data-tab="upload" class="active">上传发送</button>
+    <button data-tab="types">模板管理</button>
+    <button data-tab="platforms">平台管理</button>
+    <button data-tab="smtp">账号配置</button>
+    <button data-tab="logs">发送日志</button>
+  </div>
+
+  <!-- 上传发送 -->
+  <section class="panel active" id="tab-upload">
+    <div id="previewBanner" class="banner" style="display:none">
+      ⚠ <b>预览模式</b>：未连接到发送后端（已部署为静态预览）。上传 / 校验 / 发送需本地或内网的服务端；
+      你可以点「手动添加」完整体验「解析 → 分组 → 拖拽」流程，但真正的发信请在本机/内网运行的后台上进行。
+    </div>
+
+    <div class="card">
+      <h3>① 上传邮件正文 / 附件</h3>
+      <p class="hint">支持 .md / .txt / .html / .xlsx / .xls / .csv / .pdf / .doc / .png 等，可多选。<b>文本文件</b>作为邮件正文；<b>非文本文件</b>自动转为该条邮件的附件，正文使用文件名识别出的邮件类型模板。文件名示例：<code>海峡银行监管件邮件-新浪国茂-张三.xlsx</code>，系统会自动识别<b>平台</b>、<b>客户姓名</b>与<b>邮件类型</b>。也可在下方「分组核对」的<b>附件</b>列逐条追加。</p>
+      <div style="margin-bottom:12px">
+        <label style="margin-top:0">客户姓名默认值（文件名未解析出客户时以此填充，可选）</label>
+        <input type="text" id="upContact" placeholder="如：张三" style="max-width:260px" />
+      </div>
+      <div id="dropzone" class="dropzone">点击选择文件，或把文件拖拽到此处</div>
+      <input type="file" id="upFile" multiple accept=".md,.txt,.html,.htm,.xlsx,.xls,.csv,.pdf,.doc,.docx,.png,.jpg,.jpeg,.zip" style="display:none" />
+      <div style="margin-top:10px">
+        <button class="btn ghost sm" id="btnManual">+ 手动添加（无需后端也能演示）</button>
+      </div>
+    </div>
+
+    <div class="card" id="upGroupsCard" style="display:none">
+      <h3>② 核对分组（按 平台）</h3>
+      <p class="hint">平台、客户姓名可直接修改；拖动条目左侧 ⠿ 可跨平台分组。修改内容后会自动校验，也可手动点「刷新校验」立即刷新；校验通过才能进入确认发送。</p>
+      <div id="upErrBanner" class="err-banner" role="alert" aria-live="polite"></div>
+      <div id="upGroups"></div>
+      <div style="margin-top:14px">
+        <button class="btn ghost" id="btnUpPreview">刷新校验</button>
+        <span class="muted" id="upPreviewStat"></span>
+      </div>
+    </div>
+
+    <div class="card" id="upConfirmCard" style="display:none">
+      <h3>③ 确认发送</h3>
+      <p class="hint">校验全部通过后，点击下方按钮会弹出核对清单（只读），确认无误后再正式发送。</p>
+      <div style="margin-top:12px">
+        <button class="btn" id="btnUpSend" disabled>确认发送</button>
+        <span class="muted" id="upSendStat"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 上传发送：确认弹窗（只读核对） -->
+  <div class="modal-mask" id="upConfirmModal">
+    <div class="modal">
+      <h3>核对并确认发送</h3>
+      <p class="hint">以下为本次将发送的邮件清单（只读）。请确认收件人、主题与正文无误，再点击「确认发送」。</p>
+      <div id="upConfirmSummary"></div>
+      <div id="upConfirmBody" style="max-height:52vh;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 10px"></div>
+      <div style="margin-top:16px;text-align:right">
+        <button class="btn ghost" id="btnUpConfirmBack">返回</button>
+        <button class="btn" id="btnUpConfirmFinal">确认发送</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 类型管理 -->
+  <section class="panel" id="tab-types">
+    <div class="card">
+      <h3>邮件类型（模板）</h3>
+      <div style="margin-bottom:12px"><button class="btn ghost sm" id="btnNewType">+ 新建类型</button></div>
+      <table id="typeTable">
+        <thead><tr><th>类型名称</th><th>主题格式</th><th>关联平台</th><th>正文</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 平台管理 -->
+  <section class="panel" id="tab-platforms">
+    <div class="card">
+      <h3>接收平台</h3>
+      <div style="margin-bottom:12px"><button class="btn ghost sm" id="btnNewPlat">+ 新建平台</button></div>
+      <table id="platTable">
+        <thead><tr><th>平台名称</th><th>收件邮箱</th><th>附件</th><th>启用</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 账号配置 -->
+  <section class="panel" id="tab-smtp">
+    <div class="card">
+      <h3>发件账号</h3>
+      <p class="hint">可添加多个 SMTP 发件账号，但<b>同一时刻只能启用一个</b>（启用为单选）。保存后可编辑 / 删除，也可单独做「连接测试」（只验证连接与认证，不发信）。</p>
+      <table id="accTable" style="margin-bottom:10px">
+        <thead><tr><th>名称</th><th>SMTP Host</th><th>账号</th><th>启用</th><th>连接状态</th><th>上次测试</th><th>操作</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <button class="btn ghost sm" id="btnNewAcc">＋ 新增账号</button>
+      <div id="accForm" style="display:none;margin-top:14px;border-top:1px dashed var(--line);padding-top:14px">
+        <div class="row">
+          <div><label>名称（备注，便于区分）</label><input type="text" id="accName" placeholder="如：QQ主号 / 网易备用" /></div>
+          <div><label>服务商</label>
+            <select id="accProvider">
+              <option value="qq">QQ 邮箱 (smtp.qq.com:587)</option>
+              <option value="163">163 (smtp.163.com:465)</option>
+              <option value="126">126 (smtp.126.com:465)</option>
+              <option value="outlook">Outlook/Hotmail (smtp.office365.com:587)</option>
+              <option value="custom">自定义</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div><label>邮箱账号</label><input type="text" id="accUser" placeholder="xxx@qq.com" autocomplete="off" /></div>
+          <div><label>密码 / 授权码</label><input type="password" id="accPass" placeholder="QQ/163 填授权码，企业邮箱填登录密码" autocomplete="new-password" /></div>
+        </div>
+        <div class="row">
+          <div><label>发件人显示名（可选）</label><input type="text" id="accFromName" placeholder="如：朱佳皓" /></div>
+          <div><label>发件地址（可选，留空=用邮箱账号）</label><input type="text" id="accFrom" placeholder="yourname@example.com" autocomplete="off" /></div>
+        </div>
+        <div id="accCustom" style="display:none" class="row">
+          <div><label>SMTP Host</label><input type="text" id="accHost" /></div>
+          <div><label>端口</label><input type="text" id="accPort" placeholder="465" /></div>
+          <div><label>SSL(secure)</label><input type="text" id="accSecure" placeholder="true/false" /></div>
+        </div>
+        <div class="row" style="align-items:center">
+          <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="accEnabled" id="accEnabled" value="1" /> 设为启用（发送时使用此账号）</label>
+        </div>
+        <div style="margin-top:12px">
+          <button class="btn" id="btnSaveAcc">保存账号</button>
+          <button class="btn ghost" id="btnTestAcc">连接测试</button>
+          <button class="btn ghost" id="btnCancelAcc">取消</button>
+          <span class="muted" id="accStat"></span>
+        </div>
+        <p class="hint">密码仅存于本机 <code>data/accounts.json</code>（权限 600），不入库、不上云。编辑时密码留空表示不修改。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 日志 -->
+  <section class="panel" id="tab-logs">
+    <div class="card">
+      <h3>发送记录</h3>
+      <table id="logTable"><thead><tr><th>时间</th><th>类型</th><th>平台</th><th>客户姓名</th><th>主题</th><th>附件</th><th>状态</th></tr></thead><tbody></tbody></table>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <h3 style="margin:0">运行报错日志</h3>
+        <div style="display:flex;gap:8px">
+          <button class="btn ghost" id="btnRefreshErr" style="padding:4px 12px">刷新</button>
+          <a class="btn ghost" id="btnDownloadErr" style="padding:4px 12px;text-decoration:none" href="/api/error-log?download=1">下载</a>
+        </div>
+      </div>
+      <p class="muted" style="font-size:12px;margin:6px 0">工具任何报错（崩溃、连接失败、发送异常）都会自动落盘到 <code>logs/mailer-error.log</code>。再出错时，来这里一步查根因。</p>
+      <pre id="errLog" class="log-box">（暂无报错日志）</pre>
+    </div>
+  </section>
+</div>
+
+<!-- 类型编辑弹窗 -->
+<div class="modal-mask" id="typeModal">
+  <div class="modal">
+    <h3 id="typeModalTitle">编辑类型</h3>
+    <label>类型名称</label><input type="text" id="tName" />
+    <label>主题格式（变量用 <code>{平台名称}</code> <code>{客户姓名}</code> <code>{日期}</code> 等）</label>
+    <input type="text" id="tSubject" />
+    <label>发件人显示名（留空用账号默认）</label><input type="text" id="tSender" />
+    <label>关联平台（填「全部」或逗号分隔的平台名）</label><input type="text" id="tRelated" />
+    <label>备注</label><input type="text" id="tNote" />
+    <div class="two-col" style="margin-top:8px">
+      <div><label>正文（Markdown）</label><textarea id="tBody" style="min-height:260px"></textarea></div>
+      <div><label>实时预览</label><div class="preview-box" id="tPreview"></div></div>
+    </div>
+    <div style="margin-top:16px;text-align:right">
+      <button class="btn ghost" onclick="closeModal('typeModal')">取消</button>
+      <button class="btn" id="btnSaveType">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 平台编辑弹窗 -->
+<div class="modal-mask" id="platModal">
+  <div class="modal">
+    <h3 id="platModalTitle">编辑平台</h3>
+    <label>平台名称</label><input type="text" id="pName" />
+    <label>收件邮箱（多个用逗号分隔）</label><input type="text" id="pTo" />
+    <div class="row">
+      <div><label>抄送</label><input type="text" id="pCc" /></div>
+      <div><label>密送</label><input type="text" id="pBcc" /></div>
+    </div>
+    <label>附件（文件名，多个用英文分号分隔，文件放到 attachments/ 目录）</label><input type="text" id="pAtt" />
+    <div class="row">
+      <div><label>启用</label>
+        <select id="pEnabled"><option value="是">是</option><option value="否">否</option></select>
+      </div>
+    </div>
+    <div style="margin-top:16px;text-align:right">
+      <button class="btn ghost" onclick="closeModal('platModal')">取消</button>
+      <button class="btn" id="btnSavePlat">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $=s=>document.querySelector(s);
+const api=(m,u,b)=>new Promise(res=>{
+  try{
+    const xhr=new XMLHttpRequest();
+    xhr.open(m,u,true);
+    let body=null;
+    if(b){xhr.setRequestHeader('Content-Type','application/json');body=JSON.stringify(b);}
+    xhr.onload=()=>{
+      const t=xhr.responseText||'';
+      let d={};
+      try{d=t?JSON.parse(t):{};}catch(e){d={error:t};}
+      res({ok:xhr.status>=200&&xhr.status<400,data:d});
+    };
+    xhr.onerror=()=>res({ok:false,data:{error:'network'}});
+    xhr.send(body);
+  }catch(e){res({ok:false,data:{error:e.message||String(e)}});}
+});
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
+function openModal(id){const el=$('#'+id);el.classList.add('show');void el.offsetWidth;}  // 强制重排，避免 display:none→flex 切换时的首次绘制缺陷
+function closeModal(id){$('#'+id).classList.remove('show');}
+function esc(s){return String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function escAttr(s){return esc(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');$('#tab-'+b.dataset.tab).classList.add('active');
+  if(b.dataset.tab==='types')loadTypes();
+  if(b.dataset.tab==='platforms')loadPlatforms();
+  if(b.dataset.tab==='smtp')loadAccounts();
+  if(b.dataset.tab==='logs'){loadLogs();loadErrLog();}
+});
+
+let TYPES=[],PLATFORMS=[];
+async function init(){
+  let data={types:[],platforms:[],smtp:{configured:false}};
+  try{
+    const r=await api('GET','/api/state');
+    if(r.ok&&r.data)data=r.data;else throw new Error('backend');
+  }catch(e){ BACKEND=false; $('#previewBanner').style.display='block'; }
+  if(data.account){$('#accountTag').textContent='启用账号: '+(data.account.user||'已配置');$('#accountTag').style.background='#dcfce7';}
+  else{$('#accountTag').textContent='未启用账号';$('#accountTag').style.background='#fee2e2';}
+  TYPES=data.types||[];PLATFORMS=data.platforms||[];
+  UP.from=(data.account&&data.account.user)||'';
+  if(TYPES.length){ UP.type=TYPES[0].name; }
+  $('#upPreviewStat').textContent='修改内容会自动校验，也可手动点「刷新校验」';
+}
+async function loadTypes(){
+  const {data}=await api('GET','/api/types');TYPES=Array.isArray(data)?data:[];
+  const tb=$('#typeTable tbody');
+  tb.innerHTML=TYPES.map(t=>`<tr><td>${esc(t.name)}</td><td class="muted">${esc(t.subjectTemplate||'(空)')}</td>
+    <td>${esc(Array.isArray(t.relatedPlatforms)?t.relatedPlatforms.join(', '):t.relatedPlatforms)}</td>
+    <td class="muted">${(t.body||'').split('\n').filter(x=>x.trim()).length} 行</td>
+    <td><button class="btn ghost sm" onclick="editType('${esc(t.name)}')">编辑</button>
+    <button class="btn danger sm" onclick="delType('${esc(t.name)}')">删</button></td></tr>`).join('');
+}
+async function loadPlatforms(){
+  const {data}=await api('GET','/api/platforms');PLATFORMS=data.platforms||[];
+  const tb=$('#platTable tbody');
+  tb.innerHTML=PLATFORMS.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.to)}</td>
+    <td class="muted">${esc(p.attachments||'—')}</td>
+    <td><span class="pill ${p.enabled?'on':'off'}">${p.enabled?'启用':'停用'}</span></td>
+    <td><button class="btn ghost sm" onclick="editPlat(${p.row})">编辑</button>
+    <button class="btn danger sm" onclick="delPlat(${p.row})">删</button></td></tr>`).join('');
+}
+async function loadAccounts(){
+  const {data}=await api('GET','/api/accounts');
+  const list=(data.accounts||[]);
+  const tb=$('#accTable tbody');
+  if(!list.length){tb.innerHTML='<tr><td colspan="7" class="muted">还没有账号，点「＋ 新增账号」添加第一个。</td></tr>';return;}
+  tb.innerHTML=list.map(a=>{
+    const enableBtn=a.enabled?'':'<button class="btn ghost sm" onclick="enableAcc(\''+a.id+'\')">设为启用</button>';
+    let statusBadge,lastTestText='—';
+    if(!a.lastTestAt){statusBadge='<span class="pill muted">未测试</span>';}
+    else if(a.lastTestOk){statusBadge='<span class="pill on">通过</span>';lastTestText=new Date(a.lastTestAt).toLocaleString();}
+    else{statusBadge=`<span class="pill off" title="${esc(a.lastTestError||'')}">失败</span>`;lastTestText=new Date(a.lastTestAt).toLocaleString();}
+    return `<tr>
+    <td>${esc(a.name||a.user||'(未命名)')}</td>
+    <td class="muted">${esc(a.host)}:${esc(a.port)}${a.secure?' (SSL)':''}</td>
+    <td>${esc(a.user)}</td>
+    <td>${a.enabled?'<span class="pill on">启用</span>':'<span class="pill off">停用</span>'}</td>
+    <td>${statusBadge}</td>
+    <td class="muted" style="font-size:12px">${esc(lastTestText)}</td>
+    <td>
+      ${enableBtn}
+      <button class="btn ghost sm" onclick="editAcc('${a.id}')">编辑</button>
+      <button class="btn ghost sm" onclick="testAccById('${a.id}')">连接测试</button>
+      <button class="btn danger sm" onclick="delAcc('${a.id}')">删</button>
+    </td></tr>`;
+  }).join('');
+}
+const PROVIDER_HOSTS={qq:'smtp.qq.com','163':'smtp.163.com','126':'smtp.126.com',outlook:'smtp.office365.com'};
+const PROVIDER_PLACEHOLDERS={qq:'xxx@qq.com','163':'xxx@163.com','126':'xxx@126.com',outlook:'xxx@outlook.com',custom:'yourname@example.com'};
+const PROVIDER_USER_DOMAINS={qq:['@qq.com'],'163':['@163.com'],'126':['@126.com'],outlook:['@outlook.com','@hotmail.com','@live.com']};
+let editingAccId=null;
+function openAccForm(){$('#accForm').style.display='block';$('#accStat').textContent='';}
+function closeAccForm(){editingAccId=null;$('#accForm').style.display='none';['accName','accUser','accPass','accFromName','accFrom','accHost','accPort','accSecure'].forEach(i=>$('#'+i).value='');$('#accEnabled').checked=false;$('#accCustom').style.display='none';}
+function fillProviderDefaults(){
+  const p=$('#accProvider').value;
+  const pre={qq:{host:'smtp.qq.com',port:'587',secure:'false'},'163':{host:'smtp.163.com',port:'465',secure:'true'},'126':{host:'smtp.126.com',port:'465',secure:'true'},outlook:{host:'smtp.office365.com',port:'587',secure:'false'}};
+  if(pre[p]){$('#accHost').value=pre[p].host;$('#accPort').value=pre[p].port;$('#accSecure').value=pre[p].secure;}
+  $('#accUser').placeholder=PROVIDER_PLACEHOLDERS[p]||PROVIDER_PLACEHOLDERS.custom;
+}
+function validateAccUser(){
+  const p=$('#accProvider').value;
+  const user=$('#accUser').value.trim();
+  if(!user)return {ok:false,msg:'请填邮箱账号'};
+  const at=user.indexOf('@');
+  if(at<1||user.indexOf('.',at)<at+2)return {ok:false,msg:'邮箱格式不正确'};
+  const lower=user.toLowerCase();
+  if(p==='custom')return {ok:true};
+  const domains=PROVIDER_USER_DOMAINS[p];
+  if(domains&&!domains.some(d=>lower.endsWith(d))){
+    const label=$('#accProvider').options[$('#accProvider').selectedIndex].text.split(' ')[0];
+    return {ok:false,msg:label+'邮箱账号必须以 '+domains.join(' / ')+' 结尾'};
+  }
+  return {ok:true};
+}
+$('#accProvider').onchange=()=>{const c=$('#accProvider').value==='custom';$('#accCustom').style.display=c?'flex':'none';if(!c)fillProviderDefaults();};
+$('#btnNewAcc').onclick=()=>{closeAccForm();openAccForm();$('#accEnabled').checked=true;fillProviderDefaults();};
+$('#btnCancelAcc').onclick=closeAccForm;
+async function editAcc(id){
+  const {data}=await api('GET','/api/accounts');
+  const a=(data.accounts||[]).find(x=>x.id===id);if(!a)return;
+  editingAccId=id;openAccForm();
+  $('#accName').value=a.name||'';$('#accUser').value=a.user||'';$('#accPass').value='';
+  $('#accFromName').value=a.fromName||'';$('#accFrom').value=(a.from&&a.from!==a.user)?a.from:'';
+  const prov=Object.keys(PROVIDER_HOSTS).find(k=>PROVIDER_HOSTS[k]===a.host)||'custom';
+  $('#accProvider').value=prov;$('#accCustom').style.display=prov==='custom'?'flex':'none';
+  $('#accUser').placeholder=PROVIDER_PLACEHOLDERS[prov]||PROVIDER_PLACEHOLDERS.custom;
+  $('#accHost').value=a.host||'';$('#accPort').value=a.port!=null?a.port:'';$('#accSecure').value=a.secure?'true':'false';
+  $('#accEnabled').checked=!!a.enabled;$('#accStat').textContent='';
+}
+$('#btnSaveAcc').onclick=async()=>{
+  const user=$('#accUser').value.trim();
+  const host=$('#accHost').value.trim();
+  if(!user||!host){toast('请填邮箱账号与 SMTP Host');return;}
+  const vu=validateAccUser();
+  if(!vu.ok){toast(vu.msg);return;}
+  const body={id:editingAccId||undefined,name:$('#accName').value.trim()||user,host,
+    port:$('#accPort').value.trim()||465,secure:($('#accSecure').value.trim()||'true').toLowerCase()==='true',
+    user,pass:$('#accPass').value,fromName:$('#accFromName').value.trim(),from:$('#accFrom').value.trim(),
+    rejectUnauthorized:true,enabled:$('#accEnabled').checked};
+  const r=await api('POST','/api/accounts',body);
+  if(r.ok){toast('账号已保存');closeAccForm();loadAccounts();init();}else toast('保存失败: '+(r.data.error||''));
+};
+$('#btnTestAcc').onclick=async()=>{
+  const user=$('#accUser').value.trim();const host=$('#accHost').value.trim();
+  if(!user||!host){toast('请先填邮箱账号与 Host');return;}
+  const body={id:editingAccId||undefined,host,port:$('#accPort').value.trim()||465,secure:($('#accSecure').value.trim()||'true').toLowerCase()==='true',
+    user,pass:$('#accPass').value,rejectUnauthorized:true};
+  $('#accStat').textContent='测试中…';
+  const r=await api('POST','/api/accounts/test',body);
+  if(r.ok&&r.data&&r.data.ok){$('#accStat').textContent='连接成功 ✓';toast('连接测试通过');}
+  else{$('#accStat').textContent='失败：'+((r.data&&r.data.error)||'未知');toast('连接失败');}
+  if(editingAccId)loadAccounts();
+};
+async function testAccById(id){
+  const r=await api('POST','/api/accounts/test',{id});
+  if(r.ok&&r.data&&r.data.ok)toast('连接测试通过 ✓');else toast('连接失败：'+((r.data&&r.data.error)||''));
+  await loadAccounts();
+}
+async function enableAcc(id){
+  if(!confirm('将此账号设为启用？其它账号会自动停用。'))return;
+  const r=await api('POST','/api/accounts',{id,enabled:true});
+  if(r.ok){toast('已启用');loadAccounts();init();}else toast('启用失败: '+((r.data&&r.data.error)||''));
+}
+async function delAcc(id){
+  if(!confirm('删除该发件账号？'))return;
+  const r=await api('DELETE','/api/accounts?id='+encodeURIComponent(id));
+  if(r.ok){toast('已删除');loadAccounts();init();}else toast('删除失败');
+}
+async function loadLogs(){
+  const {data}=await api('GET','/api/logs');
+  const tb=$('#logTable tbody');
+  const rows=(data.entries||[]).slice().reverse();
+  // CSV 列：0时间/1邮件类型/2平台/3客户姓名/4收件邮箱/5抄送/6主题/7附件/8状态/9详情/10配置行号；表格只显示 7 列，收件邮箱放 title + 客户名下小字
+  tb.innerHTML=rows.map(e=>`<tr><td>${esc(e[0])}</td><td>${esc(e[1])}</td><td>${esc(e[2])}</td>
+    <td title="${escAttr(e[4])}">${esc(e[3])}${e[4]?`<div class="muted" style="font-size:11px">${esc(e[4])}</div>`:''}</td>
+    <td>${esc(e[6])}</td><td class="muted">${esc(e[7])}</td>
+    <td><span class="pill ${e[8]==='成功'?'on':'off'}">${esc(e[8])}</span></td></tr>`).join('');
+}
+async function loadErrLog(){
+  try{
+    const {data}=await api('GET','/api/error-log');
+    const box=$('#errLog');
+    if(data&&data.text&&data.text.trim()){
+      box.textContent=data.text;
+      // 仅当内容含 [ERROR] 或 [WARN] 行才加红边框；纯 INFO（如"已监听端口"）保持中性灰
+      box.classList.toggle('has-err', /\[(ERROR|WARN|UNCAUGHT|UNHANDLED)\]/i.test(data.text));
+    }else{
+      box.textContent='（暂无报错日志）';
+      box.classList.remove('has-err');
+    }
+  }catch(e){ $('#errLog').textContent='加载报错日志失败：'+(e.message||e); }
+}
+$('#btnRefreshErr').onclick=loadErrLog;
+
+// ---- 类型编辑 ----
+let editingTypeName=null;
+function editType(name){const t=TYPES.find(x=>x.name===name);editingTypeName=name;
+  $('#typeModalTitle').textContent='编辑类型';
+  $('#tName').value=t.name;$('#tName').readOnly=true;
+  $('#tSubject').value=t.subjectTemplate;$('#tSender').value=t.senderName||'';
+  $('#tRelated').value=Array.isArray(t.relatedPlatforms)?t.relatedPlatforms.join(', '):t.relatedPlatforms;
+  $('#tNote').value=t.note||'';$('#tBody').value=t.body||'';
+  renderPreview();openModal('typeModal');
+}
+$('#btnNewType').onclick=()=>{editingTypeName=null;$('#typeModalTitle').textContent='新建类型';
+  ['tName','tSubject','tSender','tRelated','tNote','tBody'].forEach(i=>$('#'+i).value='');
+  $('#tName').readOnly=false;$('#tRelated').value='全部';renderPreview();openModal('typeModal');};
+async function renderPreview(){const {data}=await api('POST','/api/render',{md:$('#tBody').value});$('#tPreview').innerHTML=data.html||'';}
+$('#tBody').oninput=renderPreview;
+$('#btnSaveType').onclick=async()=>{
+  const body={name:$('#tName').value.trim(),subjectTemplate:$('#tSubject').value.trim(),
+    senderName:$('#tSender').value.trim(),relatedPlatforms:$('#tRelated').value.trim()||'全部',
+    note:$('#tNote').value.trim(),body:$('#tBody').value};
+  if(!body.name){toast('请填类型名称');return;}
+  const r=editingTypeName?await api('PUT','/api/types/'+encodeURIComponent(editingTypeName),body)
+    :await api('POST','/api/types',body);
+  if(r.ok){toast('已保存');closeModal('typeModal');loadTypes();init();}else toast('保存失败: '+(r.data.error||''));
+};
+async function delType(name){if(!confirm('删除类型「'+name+'」？'))return;const r=await api('DELETE','/api/types/'+encodeURIComponent(name));if(r.ok){toast('已删除');loadTypes();init();}else toast('删除失败');}
+
+// ---- 平台编辑 ----
+let editingPlatRow=null;
+function editPlat(row){const p=PLATFORMS.find(x=>x.row===row);editingPlatRow=row;
+  $('#platModalTitle').textContent='编辑平台';
+  $('#pName').value=p.name;$('#pTo').value=p.to;$('#pCc').value=p.cc;$('#pBcc').value=p.bcc;
+  $('#pAtt').value=p.attachments||'';$('#pEnabled').value=p.enabled?'是':'否';
+  openModal('platModal');
+}
+$('#btnNewPlat').onclick=()=>{editingPlatRow=null;$('#platModalTitle').textContent='新建平台';
+  ['pName','pTo','pCc','pBcc','pAtt'].forEach(i=>$('#'+i).value='');$('#pEnabled').value='是';openModal('platModal');};
+$('#btnSavePlat').onclick=async()=>{
+  const body={name:$('#pName').value.trim(),to:$('#pTo').value.trim(),cc:$('#pCc').value.trim(),
+    bcc:$('#pBcc').value.trim(),attachments:$('#pAtt').value.trim(),enabled:$('#pEnabled').value};
+  if(!body.name){toast('请填平台名称');return;}
+  const r=editingPlatRow?await api('PUT','/api/platforms/'+editingPlatRow,body):await api('POST','/api/platforms',body);
+  if(r.ok){toast('已保存');closeModal('platModal');loadPlatforms();init();}else toast('保存失败: '+(r.data.error||''));
+};
+async function delPlat(row){if(!confirm('删除该平台？'))return;const r=await api('DELETE','/api/platforms/'+row);if(r.ok){toast('已删除');loadPlatforms();init();}else toast('删除失败');}
+
+// ===== 上传发送（按文件名解析平台/客户 → 分组 → 拖拽跨组） =====
+let BACKEND = true;
+let UP = { entries: [], type: '' };
+
+function knownPlatformNames() { return PLATFORMS.map((p) => p.name); }
+function knownTypeNames() { return TYPES.map((t) => t.name); }
+
+// 平台别名：文件名里出现左列任意别名时，若配置中存在右列规范名则归一到规范名
+const PLATFORM_ALIASES = [
+  ['新浪国茂', ['国茂']],
+  ['新浪航卓', ['航卓']],
+];
+
+/** 把文件名里提取到的平台片段归一化为配置里的规范平台名 */
+function normalizePlatform(raw, pnames) {
+  const seg = String(raw || '').trim();
+  if (!seg) return '';
+  // 1) 精确匹配
+  if (pnames.includes(seg)) return seg;
+  // 2) 片段包含某个已配置平台名（如 新浪国茂xxx → 新浪国茂）
+  const hit1 = pnames.find((p) => p.length >= 2 && seg.includes(p));
+  if (hit1) return hit1;
+  // 3) 某个已配置平台名包含该片段（如 seg=国茂，配置=新浪国茂）
+  const hit2 = pnames.find((p) => p.length >= 2 && p.includes(seg));
+  if (hit2) return hit2;
+  // 4) 命中别名表，且对应规范名已配置
+  for (const [canon, aliases] of PLATFORM_ALIASES) {
+    if (pnames.includes(canon) && aliases.some((a) => seg === a || seg.includes(a))) return canon;
+  }
+  // 5) 别名表的反向：文件名是规范名/相关词，但配置里只有短别名
+  for (const [canon, aliases] of PLATFORM_ALIASES) {
+    if (seg === canon || aliases.some((a) => seg.includes(a))) {
+      const short = aliases.find((a) => pnames.includes(a));
+      if (short) return short;
+    }
+  }
+  return seg;
+}
+
+// 类型关键字 → 规范类型名（顺序即优先级，越长越优先）
+const TYPE_KEYWORDS = [
+  { kw: ['监管件', '监管'], name: '监管件' },
+  { kw: ['先行引导', '先行', '引导'], name: '先行引导' },
+  { kw: ['行内客服工单', '行内客户工单', '行内工单', '工单'], name: '行内工单' },
+];
+
+/** 在文件名里按关键字检测类型。
+ *  优先从「邮件标题前缀」段（含类型关键字且含"邮件"）识别，
+ *  避免客户名里恰好含"引导/工单/监管"等关键字时干扰判断；无前缀段时再扫整文件名。 */
+function detectTypeName(rawName) {
+  const s = String(rawName || '');
+  const segs = s.split(/[-_－_—\s]+/);
+  const header = segs.find(
+    (seg) => TYPE_KEYWORDS.some((t) => t.kw.some((k) => k.length >= 2 && seg.includes(k))) && seg.includes('邮件')
+  );
+  const target = header || s;
+  for (const t of TYPE_KEYWORDS) {
+    if (t.kw.some((k) => target.includes(k))) return t.name;
+  }
+  return '';
+}
+
+/** 从文件名解析出 平台 / 客户 / 类型（顺序无关）。
+ *  两种命名都支持：
+ *   简式：国茂-张三.md / 张三-国茂-监管件.md
+ *   机构式：海峡银行监管件邮件-海尔-测试客户甲、测试客户乙、测试客户丙
+ *     （首段为「机构+类型+邮件」标题前缀，含类型关键字且含"邮件"，自动剔除）
+ *  - 平台：优先整段精确匹配；其次段内含平台名（≥2字）；均无匹配时取标题前缀之后的首段（便于在未配置平台时仍能看到名字）
+ *  - 类型：按关键字在文件名任意位置识别（监管件/监管、先行引导/先行/引导、行内工单/工单）
+ *  - 客户：剔除平台段与类型关键字段，剩余用空格拼接
+ */
+function parseFileName(rawName) {
+  const name = String(rawName || '').replace(/\.[^.]+$/, '');
+  const pnames = knownPlatformNames();
+  const segs = name.split(/[-_－_—\s]+/).map((s) => s.trim()).filter(Boolean);
+
+  // 0) 剔除「邮件标题前缀」段：同时含类型关键字与"邮件"（如 海峡银行监管件邮件）
+  const isHeader = (s) =>
+    TYPE_KEYWORDS.some((t) => t.kw.some((k) => k.length >= 2 && s.includes(k))) && s.includes('邮件');
+  const segs2 = segs.filter((s) => !isHeader(s));
+
+  // 1) 平台：逐段归一化匹配（支持别名、长名、短名互认）
+  let platform = '';
+  let platIdx = -1;
+  for (let i = 0; i < segs2.length; i++) {
+    const norm = normalizePlatform(segs2[i], pnames);
+    if (pnames.includes(norm)) { platform = norm; platIdx = i; break; }
+  }
+  // 2) 平台：仍未命中但存在未配置的平台片段 → 取首段暴露出来
+  if (!platform && segs2.length) {
+    const first = segs2[0];
+    const isTypeSeg = TYPE_KEYWORDS.some((t) => t.kw.some((k) => k.length >= 2 && (first === k || first.startsWith(k) || first.endsWith(k))));
+    platform = isTypeSeg && segs2.length > 1 ? segs2[1] : first;
+    platIdx = isTypeSeg && segs2.length > 1 ? 1 : 0;
+  }
+
+  // 4) 类型：关键字检测（扫描整文件名，不限于某一整段）
+  const type = detectTypeName(name);
+
+  // 5) 客户：剔除平台段与类型关键字段，剩余用空格拼接
+  const custSegs = segs2.filter((s, i) => {
+    if (i === platIdx) return false;
+    if (type && TYPE_KEYWORDS.some((t) => t.kw.some((k) => k.length >= 2 && (s === k || s.startsWith(k) || s.endsWith(k))))) return false;
+    return true;
+  });
+  return { platform, customer: custSegs.join(' ').trim(), type };
+}
+
+function addEntryFromUpload(fileMeta) {
+  const parsed = parseFileName(fileMeta.name);
+  const ext = (fileMeta.name.split('.').pop() || '').toLowerCase();
+  const isBody = ['md', 'txt', 'html', 'htm'].includes(ext);
+  UP.entries.push({
+    id: 'e' + Math.random().toString(36).slice(2),
+    fileName: fileMeta.name,
+    bodyFileId: isBody ? fileMeta.id : '',
+    bodyText: '',
+    type: parsed.type || '',
+    platform: parsed.platform,
+    customer: parsed.customer,
+    attachments: isBody ? [] : [{ id: fileMeta.id, name: fileMeta.name }],
+    _status: '',
+    _preview: null,
+  });
+}
+
+function renderUpload() {
+  const card = $('#upGroupsCard');
+  if (!UP.entries.length) {
+    card.style.display = 'none';
+    $('#upConfirmCard').style.display = 'none';
+    $('#upGroups').innerHTML = '';
+    return;
+  }
+  card.style.display = 'block';
+  const groups = {};
+  for (const e of UP.entries) {
+    const key = e.platform || '__none__';
+    (groups[key] = groups[key] || []).push(e);
+  }
+  const pnames = knownPlatformNames();
+  const order = Object.keys(groups).sort(
+    (a, b) => (a === '__none__' ? 1 : 0) - (b === '__none__' ? 1 : 0)
+  );
+  $('#upGroups').innerHTML = order
+    .map((key) => {
+      const isNone = key === '__none__';
+      const platName = isNone ? '⚠ 待指定平台' : key;
+      const rows = groups[key]
+        .map((e) => {
+          const pOpts =
+            '<option value="">— 选平台 —</option>' +
+            pnames
+              .map((n) => `<option value="${esc(n)}" ${n === e.platform ? 'selected' : ''}>${esc(n)}</option>`)
+              .join('');
+          const pv = e._preview || {};
+          const typeOpts = '<option value="" ' + (!e.type ? 'selected' : '') + '>默认：' + esc(UP.type || '未设') + '</option>' +
+            TYPES.map((t) => `<option value="${esc(t.name)}" ${e.type === t.name ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
+          const toTxt = pv.to && pv.to.length ? pv.to.join('; ') : '—';
+          const subj = pv.subject || '—';
+          const rawBody = pv.body || e.bodyText || '';
+          const bodySnip = rawBody.replace(/\s+/g, ' ').slice(0, 36) + (rawBody.length > 36 ? '…' : '');
+          const bodyTitle = escAttr(rawBody.slice(0, 800)).replace(/\r/g, '').replace(/\n/g, '&#10;');
+          let statusCell;
+          if (e._status === 'ok') statusCell = `<span class="pill on">✓ 通过</span>`;
+          else if (e._status === 'err')
+            statusCell = `<span class="pill off" title="${esc((e._errs || []).join('；'))}">✗ 不通过</span>`;
+          else statusCell = '<span class="muted">未校验</span>';
+          const rowErr = e._status === 'err' ? ' row-err' : '';
+          const errDetail = e._status === 'err'
+            ? `<tr class="errDetail"><td colspan="11"><div class="errMsg">${esc((e._errs || []).join('；'))}</div></td></tr>`
+            : '';
+          return `<tr class="upRow${rowErr}" draggable="true" data-id="${e.id}">
+            <td class="grip" title="拖动可跨平台分组" style="color:var(--sub)">⠿</td>
+            <td><select class="upPlat">${pOpts}</select></td>
+            <td><input class="upCust" value="${esc(e.customer)}" placeholder="客户姓名"/></td>
+            <td class="muted" style="font-size:12px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(e.fileName)}">${esc(e.fileName)}</td>
+            <td><select class="upType">${typeOpts}</select></td>
+            <td class="attCell">
+              <div class="attList">${(e.attachments || []).map((a) => `<span class="attChip" title="${esc(a.name)}">${esc(a.name)}<button class="attX" data-eid="${e.id}" data-aid="${esc(a.id)}" title="移除">×</button></span>`).join('')}</div>
+              <label class="btn ghost xs attAdd">＋附件<input type="file" accept=".xlsx,.xls,.csv,.pdf,.doc,.docx,.png,.jpg,.jpeg,.zip,.txt,.md" multiple style="display:none" data-att="${e.id}"/></label>
+            </td>
+            <td class="muted" style="font-size:12px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(toTxt)}">${esc(toTxt)}</td>
+            <td class="muted" style="font-size:12px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(subj)}">${esc(subj)}</td>
+            <td class="muted" style="font-size:12px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${bodyTitle}">${esc(bodySnip)}</td>
+            <td>${statusCell}</td>
+            <td><button class="btn danger sm" data-del="${e.id}">删</button></td>
+          </tr>${errDetail}`;
+        })
+        .join('');
+      return `<div class="upGroup" data-platform="${esc(key)}">
+        <h4><span class="pill ${isNone ? 'warn' : ''}">${esc(platName)}</span>
+          <span class="muted">${groups[key].length} 封</span>
+          ${isNone ? '<span class="muted" style="font-size:12px">把条目拖到正确的平台分组，或在条目里选平台</span>' : ''}</h4>
+        <table style="min-width:1100px;border-collapse:collapse;font-size:13px">
+          <thead><tr>
+            <th></th><th>平台</th><th>客户姓名</th><th>文件</th><th>类型</th><th>附件</th>
+            <th>发送邮箱</th><th>邮件主题</th><th>邮件内容</th><th>校验状态</th><th></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+    })
+    .join('');
+  updateErrBanner();
+  bindUploadEvents();
+}
+
+// 校验错误横幅（就近反馈：错误统计出现在分组卡片顶部，无法被忽略）
+function updateErrBanner() {
+  const errEntries = UP.entries.filter((e) => e._status === 'err');
+  const eb = $('#upErrBanner');
+  if (errEntries.length) {
+    const plats = [];
+    errEntries.forEach((e) => {
+      const p = e.platform || '未指定平台';
+      if (plats.indexOf(p) === -1) plats.push(p);
+    });
+    eb.innerHTML = `⚠ <div><b>${errEntries.length} 封邮件未通过校验</b>，请修正后再发送。涉及平台：${esc(plats.join('、'))}</div>`;
+    eb.classList.add('show');
+  } else {
+    eb.innerHTML = '';
+    eb.classList.remove('show');
+  }
+}
+
+function bindUploadEvents() {
+  document.querySelectorAll('.upRow').forEach((row) => {
+    row.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', row.dataset.id);
+      row.classList.add('dragging');
+    });
+    row.addEventListener('dragend', () => row.classList.remove('dragging'));
+  });
+  document.querySelectorAll('.upGroup').forEach((g) => {
+    g.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      g.classList.add('over');
+    });
+    g.addEventListener('dragleave', () => g.classList.remove('over'));
+    g.addEventListener('drop', (e) => {
+      e.preventDefault();
+      g.classList.remove('over');
+      const id = e.dataTransfer.getData('text/plain');
+      const e0 = UP.entries.find((x) => x.id === id);
+      if (!e0) return;
+      if (g.dataset.platform !== '__none__') {
+        e0.platform = g.dataset.platform;
+        e0._status = '';
+        e0._preview = null;
+      }
+      renderUpload();
+      debouncedPreview();
+    });
+  });
+  document.querySelectorAll('.upPlat').forEach((sel) => {
+    sel.onchange = () => {
+      const row = sel.closest('.upRow');
+      const e0 = UP.entries.find((x) => x.id === row.dataset.id);
+      e0.platform = sel.value;
+      e0._status = '';
+      e0._preview = null;
+      renderUpload();
+      debouncedPreview();
+    };
+  });
+  document.querySelectorAll('.upType').forEach((sel) => {
+    sel.onchange = () => {
+      const row = sel.closest('.upRow');
+      const e0 = UP.entries.find((x) => x.id === row.dataset.id);
+      e0.type = sel.value;
+      e0._status = '';
+      e0._preview = null;
+      renderUpload();
+      debouncedPreview();
+    };
+  });
+  document.querySelectorAll('.upCust').forEach((inp) => {
+    inp.oninput = () => {
+      const row = inp.closest('.upRow');
+      const e0 = UP.entries.find((x) => x.id === row.dataset.id);
+      e0.customer = inp.value;
+      e0._status = '';
+      e0._preview = null;
+      debouncedPreview();
+    };
+  });
+  document.querySelectorAll('.attAdd input').forEach((inp) => {
+    inp.onchange = () => {
+      if (inp.files && inp.files.length) uploadAttachments(inp.files, inp.dataset.att);
+      inp.value = '';
+    };
+  });
+  document.querySelectorAll('.attX').forEach((b) => {
+    b.onclick = () => {
+      const e0 = UP.entries.find((x) => x.id === b.dataset.eid);
+      if (!e0) return;
+      e0.attachments = (e0.attachments || []).filter((a) => a.id !== b.dataset.aid);
+      e0._status = '';
+      renderUpload();
+    };
+  });
+  document.querySelectorAll('[data-del]').forEach((b) => {
+    b.onclick = () => {
+      UP.entries = UP.entries.filter((x) => x.id !== b.dataset.del);
+      renderUpload();
+    };
+  });
+}
+
+async function uploadFiles(files) {
+  if (!BACKEND) {
+    toast('预览模式：上传需本地/内网后端，请点「手动添加」体验');
+    return;
+  }
+  const fd = new FormData();
+  for (const f of files) fd.append('files', f);
+  try {
+    const r = await fetch('/api/upload', { method: 'POST', body: fd });
+    const d = await r.json();
+    (d.files || []).forEach(addEntryFromUpload);
+    renderUpload();
+    debouncedPreview(300);
+    toast(`已上传 ${d.files.length} 个文件`);
+  } catch (e) {
+    toast('上传失败：' + e.message);
+  }
+}
+
+let previewTimer = null;
+function debouncedPreview(delay = 600) {
+  if (!BACKEND || !UP.entries.length) return;
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => { $('#btnUpPreview').click(); }, delay);
+}
+
+/** 为某条邮件追加附件（支持 xlsx/csv/各类文档与图片） */
+async function uploadAttachments(files, eid) {
+  const e0 = UP.entries.find((x) => x.id === eid);
+  if (!e0) return;
+  if (!BACKEND) {
+    toast('预览模式：附件需本地/内网后端');
+    return;
+  }
+  const fd = new FormData();
+  for (const f of files) fd.append('files', f);
+  try {
+    const r = await fetch('/api/upload', { method: 'POST', body: fd });
+    const d = await r.json();
+    e0.attachments = e0.attachments || [];
+    for (const fm of d.files || []) e0.attachments.push({ id: fm.id, name: fm.name });
+    renderUpload();
+    toast(`已附加 ${d.files.length} 个文件`);
+  } catch (e) {
+    toast('附件上传失败：' + e.message);
+  }
+}
+
+function jobsFromEntries() {
+  const contact = $('#upContact').value.trim();
+  return UP.entries.map((e) => ({
+    type: e.type || UP.type,
+    platform: e.platform,
+    customer: e.customer || contact || '',
+    bodyFileId: e.bodyFileId || '',
+    body: e.bodyText || '',
+    attachments: (e.attachments || []).map((a) => (typeof a === 'string' ? { id: a } : { id: a.id, name: a.name })),
+  }));
+}
+
+function updateUpSendBtn() {
+  const errEntries = UP.entries.filter((e) => e._status === 'err');
+  const anyErr = errEntries.length > 0;
+  const btn = $('#btnUpSend');
+  const stat = $('#upSendStat');
+  btn.disabled = anyErr || !BACKEND;
+  if (anyErr) {
+    stat.className = 'send-warn';
+    stat.textContent = `⚠ 有 ${errEntries.length} 封未通过校验，无法发送`;
+  } else if (!BACKEND) {
+    stat.className = 'muted';
+    stat.textContent = '（预览模式，需后端）';
+  } else {
+    stat.className = 'muted';
+    stat.textContent = '';
+  }
+}
+
+$('#btnUpPreview').onclick = async () => {
+  if (!BACKEND) { toast('预览模式：校验需本地/内网后端'); return; }
+  if (!UP.entries.length) { toast('请先上传或添加邮件'); return; }
+  $('#upPreviewStat').textContent = '校验中…';
+  const { data } = await api('POST', '/api/preview-draft', { jobs: jobsFromEntries() });
+  if (data.error) { toast('校验失败: ' + data.error); $('#upPreviewStat').textContent = ''; return; }
+  data.items.forEach((it, idx) => {
+    const e = UP.entries[idx];
+    if (!e) return;
+    if (it.errors && it.errors.length) { e._status = 'err'; e._errs = it.errors; }
+    else { e._status = 'ok'; e._errs = []; }
+    e._preview = { to: it.to || [], subject: it.subject || '', body: it.body || '' };
+  });
+  renderUpload();
+  const bad = data.items.filter((i) => i.errors && i.errors.length).length;
+  $('#upPreviewStat').textContent = bad
+    ? `⚠ ${bad} 封有错误，修正后再发`
+    : `✓ 全部通过（${data.items.length} 封）`;
+  $('#upConfirmCard').style.display = bad ? 'none' : 'block';
+  updateUpSendBtn();
+  if (bad) {
+    const eb = $('#upErrBanner');
+    eb.classList.remove('shake');
+    void eb.offsetWidth; // 重启动画
+    eb.classList.add('shake');
+  }
+};
+$('#btnUpSend').onclick = () => {
+  if (!BACKEND) { toast('预览模式：发送需本地/内网服务端'); return; }
+  renderConfirmModal();
+  openModal('upConfirmModal');
+};
+$('#btnUpConfirmBack').onclick = () => closeModal('upConfirmModal');
+$('#btnUpConfirmFinal').onclick = async () => {
+  const fb = $('#btnUpConfirmFinal');
+  fb.disabled = true;
+  fb.textContent = '发送中…';
+  const { data } = await api('POST', '/api/send-draft', { jobs: jobsFromEntries(), interval: 3 });
+  fb.disabled = false;
+  fb.textContent = '确认发送';
+  closeModal('upConfirmModal');
+  $('#upSendStat').textContent = '发送中…';
+  if (data.error) {
+    toast('已拒发: ' + data.error);
+    $('#upSendStat').textContent = '';
+    if (data.items) {
+      data.items.forEach((it, idx) => {
+        const e = UP.entries[idx];
+        if (e) { e._status = 'err'; e._errs = it.errors || []; }
+      });
+      renderUpload();
+    }
+    return;
+  }
+  const ok = data.results.filter((r) => r.ok).length;
+  const fail = data.results.length - ok;
+  toast(`发送完成：成功 ${ok}，失败 ${fail}`);
+  $('#upSendStat').textContent = `成功 ${ok} / 失败 ${fail}`;
+  UP.entries = [];
+  renderUpload();
+};
+
+function renderConfirmModal() {
+  const groups = {};
+  for (const e of UP.entries) {
+    const key = e.platform || '__none__';
+    (groups[key] = groups[key] || []).push(e);
+  }
+  // 汇总条：发送前一眼看清规模（microinteractions: 确认弹窗需给出明确的总量信息）
+  let recipients = 0, attachments = 0, errCount = 0, noPlat = 0;
+  const platSet = {};
+  for (const e of UP.entries) {
+    recipients += e._preview && e._preview.to ? e._preview.to.length : 0;
+    attachments += e.attachments ? e.attachments.length : 0;
+    if (e.platform) platSet[e.platform] = 1; else noPlat++;
+    if (e._status === 'err') errCount++;
+  }
+  const platCount = Object.keys(platSet).length;
+  const warnLines = [];
+  if (errCount) warnLines.push(`有 ${errCount} 封未通过校验`);
+  if (noPlat) warnLines.push(`${noPlat} 封未指定平台`);
+  $('#upConfirmSummary').innerHTML =
+    `<div class="sum-item"><span class="sum-num">${UP.entries.length}</span><span class="sum-lbl">邮件总数</span></div>` +
+    `<div class="sum-item"><span class="sum-num">${recipients}</span><span class="sum-lbl">收件人</span></div>` +
+    `<div class="sum-item"><span class="sum-num">${attachments}</span><span class="sum-lbl">附件</span></div>` +
+    `<div class="sum-item"><span class="sum-num">${platCount}</span><span class="sum-lbl">平台</span></div>` +
+    `<div class="sum-item"><span class="sum-num" style="font-size:14px;line-height:1.5">${esc(UP.from || '—')}</span><span class="sum-lbl">发件账号</span></div>` +
+    (warnLines.length ? `<div class="sum-warn">⚠ ${esc(warnLines.join('；'))}，请返回修正后再发送</div>` : '');
+  const html = Object.keys(groups).map((key) => {
+    const platName = key === '__none__' ? '⚠ 待指定平台' : key;
+    const rows = groups[key].map((e) => {
+      const pv = e._preview || {};
+      const to = pv.to && pv.to.length ? pv.to.join('; ') : '—';
+      const subj = pv.subject || '—';
+      const body = pv.body || e.bodyText || '(无正文)';
+      return `<div style="border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:10px">
+        <div><b>${esc(e.customer || '(客户未填)')}</b> ｜ 平台：${esc(e.platform || '—')} ｜ 类型：${esc(e.type || UP.type || '—')}</div>
+        <div class="muted" style="font-size:12px">发送邮箱：${esc(UP.from || '—')} ｜ 收件：${esc(to)}</div>
+        <div class="muted" style="font-size:12px">主题：${esc(subj)}</div>
+        <div class="muted" style="font-size:12px">附件：${(e.attachments && e.attachments.length) ? esc((e.attachments || []).map((a) => a.name || a).join('；')) : '—'}</div>
+        <div style="margin-top:6px;max-height:160px;overflow:auto;font-size:13px;white-space:pre-wrap;border-top:1px dashed var(--line);padding-top:6px">${esc(body)}</div>
+      </div>`;
+    }).join('');
+    return `<div style="margin-bottom:14px"><h4 style="margin:6px 0">${esc(platName)} <span class="muted">(${groups[key].length} 封)</span></h4>${rows}</div>`;
+  }).join('');
+  $('#upConfirmBody').innerHTML = html;
+}
+
+// 拖拽 / 点击上传
+const dz = $('#dropzone');
+dz.onclick = () => $('#upFile').click();
+$('#upFile').onchange = () => {
+  if ($('#upFile').files.length) uploadFiles($('#upFile').files);
+  $('#upFile').value = '';
+};
+['dragenter', 'dragover'].forEach((ev) =>
+  dz.addEventListener(ev, (e) => {
+    e.preventDefault();
+    dz.classList.add('over');
+  })
+);
+['dragleave', 'drop'].forEach((ev) =>
+  dz.addEventListener(ev, (e) => {
+    e.preventDefault();
+    dz.classList.remove('over');
+  })
+);
+dz.addEventListener('drop', (e) => {
+  if (e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files);
+});
+$('#btnManual').onclick = () => {
+  const fn = prompt('文件名（如 国茂-张三.md，用于自动解析平台与客户）：', '国茂-张三.md');
+  if (fn === null) return;
+  const body = prompt('邮件正文（Markdown / 纯文本）：', '尊敬的对接人：\n\n此为测试邮件正文。');
+  if (body === null) return;
+  const parsed = parseFileName(fn);
+  UP.entries.push({
+    id: 'e' + Math.random().toString(36).slice(2),
+    fileName: fn,
+    bodyFileId: '',
+    bodyText: body,
+    type: parsed.type || '',
+    platform: parsed.platform,
+    customer: parsed.customer,
+    attachments: [],
+    _status: '',
+  });
+  renderUpload();
+  debouncedPreview(300);
+};
+
+init();
+</script>
+</body>
+</html>

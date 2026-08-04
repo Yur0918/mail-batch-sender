@@ -1,0 +1,13 @@
+# 运行时数据：含 SMTP 密码明文、发送记录、上传文件 —— 切勿提交
+data/
+logs/
+attachments/
+node_modules/
+node14/
+.DS_Store
+.env
+.env.*
+
+# 业务配置：含真实平台收件邮箱与模板正文，公开仓库请勿包含
+config/邮件配置.xlsx
+邮件类型与平台配置.md
