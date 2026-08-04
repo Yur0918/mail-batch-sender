@@ -395,7 +395,8 @@ app.post('/api/send-draft', async (req, res) => {
     const used = new Set();
     jobs.forEach((j) => {
       if (j.bodyFileId) used.add(path.basename(j.bodyFileId));
-      (j.attachments || []).forEach((f) => used.add(path.basename(f)));
+      // f 可能是字符串（旧接口）或 {id,name} 对象（前端 jobsFromEntries 当前形态），兼容两种
+      (j.attachments || []).forEach((f) => used.add(path.basename(typeof f === 'string' ? f : f.id)));
     });
     used.forEach((n) => {
       const p = path.join(UPLOAD_DIR, n);

@@ -20,7 +20,7 @@ echo [%DATE% %TIME%] 启动邮件后台... >> "%ERRLOG%"
 
 start "MailService" "%NODE%" "%~dp0server.js"
 
-timeout /t 3 >nul
+timeout /t 6 >nul
 
 rem 健康检查：端口 3000 是否处于监听状态
 rem 注意：中文版 Windows 的 netstat 状态列显示「侦听」而非 LISTENING，
