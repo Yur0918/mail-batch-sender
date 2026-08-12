@@ -593,7 +593,7 @@ async function loadLogs(){
   tb.innerHTML=rows.map(e=>`<tr><td>${esc(e[0])}</td><td>${esc(e[1])}</td><td>${esc(e[2])}</td>
     <td title="${escAttr(e[4])}">${esc(e[3])}${e[4]?`<div class="muted" style="font-size:11px">${esc(e[4])}</div>`:''}</td>
     <td>${esc(e[6])}</td><td class="muted">${esc(e[7])}</td>
-    <td><span class="pill ${e[8]==='成功'?'on':'off'}">${esc(e[8])}</span></td></tr>`).join('');
+    <td><span class="pill ${e[8]==='成功'?'on':'off'}" title="${escAttr(e[9])}">${esc(e[8])}</span></td></tr>`).join('');
 }
 async function loadErrLog(){
   try{
@@ -966,20 +966,38 @@ function bindUploadEvents() {
   });
 }
 
+const UPLOAD_BATCH_SIZE = 50;
+
+async function uploadBatch(files) {
+  const fd = new FormData();
+  for (const f of files) fd.append('files', f);
+  const r = await fetch('/api/upload', { method: 'POST', body: fd });
+  const d = await r.json();
+  if (!r.ok) {
+    throw new Error(d.error || ('上传失败（HTTP ' + r.status + '）'));
+  }
+  return d.files || [];
+}
+
 async function uploadFiles(files) {
   if (!BACKEND) {
     toast('预览模式：上传需本地/内网后端，请点「手动添加」体验');
     return;
   }
-  const fd = new FormData();
-  for (const f of files) fd.append('files', f);
   try {
-    const r = await fetch('/api/upload', { method: 'POST', body: fd });
-    const d = await r.json();
-    (d.files || []).forEach(addEntryFromUpload);
+    const all = [];
+    for (let i = 0; i < files.length; i += UPLOAD_BATCH_SIZE) {
+      const batch = Array.prototype.slice.call(files, i, i + UPLOAD_BATCH_SIZE);
+      const got = await uploadBatch(batch);
+      all.push.apply(all, got);
+      if (got.length < batch.length) {
+        throw new Error('部分文件未成功上传（后端返回 ' + got.length + '/' + batch.length + '）');
+      }
+    }
+    all.forEach(addEntryFromUpload);
     renderUpload();
     debouncedPreview(300);
-    toast(`已上传 ${d.files.length} 个文件`);
+    toast('已上传 ' + all.length + ' 个文件');
   } catch (e) {
     toast('上传失败：' + e.message);
   }
@@ -1000,15 +1018,20 @@ async function uploadAttachments(files, eid) {
     toast('预览模式：附件需本地/内网后端');
     return;
   }
-  const fd = new FormData();
-  for (const f of files) fd.append('files', f);
   try {
-    const r = await fetch('/api/upload', { method: 'POST', body: fd });
-    const d = await r.json();
+    const all = [];
+    for (let i = 0; i < files.length; i += UPLOAD_BATCH_SIZE) {
+      const batch = Array.prototype.slice.call(files, i, i + UPLOAD_BATCH_SIZE);
+      const got = await uploadBatch(batch);
+      all.push.apply(all, got);
+      if (got.length < batch.length) {
+        throw new Error('部分文件未成功附加（后端返回 ' + got.length + '/' + batch.length + '）');
+      }
+    }
     e0.attachments = e0.attachments || [];
-    for (const fm of d.files || []) e0.attachments.push({ id: fm.id, name: fm.name });
+    for (const fm of all) e0.attachments.push({ id: fm.id, name: fm.name });
     renderUpload();
-    toast(`已附加 ${d.files.length} 个文件`);
+    toast('已附加 ' + all.length + ' 个文件');
   } catch (e) {
     toast('附件上传失败：' + e.message);
   }

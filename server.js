@@ -74,7 +74,7 @@ const uploadStorage = multer.diskStorage({
 });
 const upload = multer({
   storage: uploadStorage,
-  limits: { fileSize: 20 * 1024 * 1024, files: 10 },
+  limits: { fileSize: 20 * 1024 * 1024, files: 200 },
 });
 
 async function buildPreviewItems(typeName, platformRows, extraUploads, overrides) {
@@ -259,7 +259,7 @@ app.post('/api/render', (req, res) => {
 });
 
 // ---------- 附件上传（发送时追加） ----------
-app.post('/api/upload', upload.array('files', 10), (req, res) => {
+app.post('/api/upload', upload.array('files', 200), (req, res) => {
   const files = (req.files || []).map((f) => ({
     id: path.basename(f.path),
     name: f.originalname,
@@ -447,6 +447,27 @@ app.get('/api/logs', (req, res) => {
     .filter(Boolean)
     .map(parseCsvLine);
   res.json({ entries, file: latest });
+});
+
+// 统一错误处理：multer 超限等中间件错误转成友好 JSON，便于前端提示。
+app.use(function (err, req, res, next) {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ error: '单个文件超过 20MB 限制' });
+    }
+    if (err.code === 'LIMIT_FILE_COUNT') {
+      return res.status(413).json({ error: '单次上传文件数量超过限制（最大 200 个）' });
+    }
+    if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+      return res.status(413).json({ error: '上传字段名不正确，请使用 files 字段' });
+    }
+    return res.status(400).json({ error: '上传失败：' + err.message });
+  }
+  if (err && err.status) {
+    return res.status(err.status).json({ error: err.message || '请求错误' });
+  }
+  ErrorLog.error('请求处理异常', { method: req.method, path: req.path, error: err.message || err });
+  res.status(500).json({ error: '服务器内部错误' });
 });
 
 const PORT = process.env.PORT || 3000;
