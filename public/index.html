@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%A7%3C/text%3E%3C/svg%3E" />
 <title>批量邮件后台</title>
 <style>
   :root{
@@ -167,6 +168,43 @@
   #upConfirmSummary .sum-lbl{font-size:11px;color:var(--sub)}
   #upConfirmSummary .sum-warn{flex-basis:100%;color:var(--err);font-weight:600;font-size:12px;background:var(--err-100);border-radius:6px;padding:7px 11px;margin-top:2px}
 
+  /* ---- 发送进度 ---- */
+  .prog-bar{height:10px;background:var(--line-2);border-radius:999px;overflow:hidden}
+  .prog-fill{height:100%;width:0;background:linear-gradient(90deg,var(--brand),#60a5fa);border-radius:999px;transition:width .4s ease}
+  .prog-stats{display:flex;gap:20px;flex-wrap:wrap;margin-top:10px;font-size:13px;color:var(--sub);align-items:baseline}
+  .prog-stats b{font-size:18px;font-weight:700;color:var(--ink);margin-left:4px}
+  .prog-stats .ok b{color:var(--ok)} .prog-stats .err b{color:var(--err)}
+  .prog-cur{margin-top:8px;font-size:12px;color:var(--sub)}
+  .prog-list{margin-top:12px;border:1px solid var(--line);border-radius:var(--radius-sm);max-height:260px;overflow:auto;background:var(--surface-2)}
+  .prog-item{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line-2);font-size:13px}
+  .prog-item:last-child{border-bottom:none}
+  .prog-item .pi-sub{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .prog-item .pi-err{max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* ---- 校验警告（不阻断）与已发送态 ---- */
+  .warn-pill{display:inline-flex;align-items:center;font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--warn-100);color:var(--warn)}
+  .pill.sent{background:var(--brand-100);color:var(--brand-d)}
+  .err-banner.warnmode{background:var(--warn-100);color:var(--warn);border-color:#fcd34d;border-left-color:var(--warn)}
+  .errDetail.warnRow td{background:var(--warn-100);border-bottom-color:#fcd34d}
+  .errDetail.warnRow .errMsg{color:var(--warn);border-color:#fcd34d}
+  .btn.xs{padding:4px 9px;font-size:11px;border-radius:6px}
+
+  /* ---- 整封邮件预览 ---- */
+  .mail-preview{border:1px solid var(--line);border-radius:var(--radius-sm);padding:16px 20px;background:#fff;max-height:50vh;overflow:auto;font-size:14px;line-height:1.7}
+  .mail-preview h1,.mail-preview h2,.mail-preview h3{margin:.5em 0}
+  .mail-preview table{border-collapse:collapse;width:auto}
+  .mail-preview td,.mail-preview th{border:1px solid var(--line);padding:6px 10px}
+
+  /* ---- 总览条（上传页顶部） ---- */
+  .overview-bar{display:flex;gap:20px;flex-wrap:wrap;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:12px 18px;margin-bottom:14px;font-size:13px;color:var(--sub);box-shadow:var(--shadow-sm)}
+  .overview-bar b{font-size:17px;font-weight:700;color:var(--ink);margin:0 2px}
+  .overview-bar .ok b{color:var(--ok)} .overview-bar .err b{color:var(--err)}
+
+  /* ---- 模板变量 chips ---- */
+  .var-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0 0;font-size:12px;color:var(--sub)}
+  .var-chip{cursor:pointer;background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:2px 8px;font-family:var(--font-mono);font-size:11px;color:var(--brand-d);transition:all .12s}
+  .var-chip:hover{background:var(--brand-100);border-color:var(--brand)}
+
   @media(max-width:480px){
     .wrap{padding:14px 14px 48px}
     .card{padding:16px}
@@ -223,6 +261,8 @@
       你可以点「手动添加」完整体验「解析 → 分组 → 拖拽」流程，但真正的发信请在本机/内网运行的后台上进行。
     </div>
 
+    <div id="overviewBar" class="overview-bar" style="display:none"></div>
+
     <div class="card">
       <h3>① 上传邮件正文 / 附件</h3>
       <p class="hint">支持 .md / .txt / .html / .xlsx / .xls / .csv / .pdf / .doc / .png 等，可多选。<b>文本文件</b>作为邮件正文；<b>非文本文件</b>自动转为该条邮件的附件，正文使用文件名识别出的邮件类型模板。文件名示例：<code>海峡银行监管件邮件-新浪国茂-张三.xlsx</code>，系统会自动识别<b>平台</b>、<b>客户姓名</b>与<b>邮件类型</b>。也可在下方「分组核对」的<b>附件</b>列逐条追加。</p>
@@ -250,10 +290,39 @@
 
     <div class="card" id="upConfirmCard" style="display:none">
       <h3>③ 确认发送</h3>
-      <p class="hint">校验全部通过后，点击下方按钮会弹出核对清单（只读），确认无误后再正式发送。</p>
-      <div style="margin-top:12px">
+      <p class="hint">校验全部通过后，点击下方按钮会弹出核对清单（只读），确认无误后再正式发送。发送过程可实时查看进度，也可中途取消。</p>
+      <div style="margin-top:12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
         <button class="btn" id="btnUpSend" disabled>确认发送</button>
+        <label style="margin:0;display:flex;align-items:center;gap:6px">发送间隔
+          <select id="upInterval" style="width:130px">
+            <option value="2">2 秒/封</option>
+            <option value="3" selected>3 秒/封（推荐）</option>
+            <option value="5">5 秒/封</option>
+            <option value="8">8 秒/封</option>
+            <option value="10">10 秒/封（更稳）</option>
+          </select>
+        </label>
         <span class="muted" id="upSendStat"></span>
+      </div>
+    </div>
+
+    <div class="card" id="sendProgCard" style="display:none">
+      <h3>④ 发送进度</h3>
+      <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
+      <div class="prog-stats">
+        <span>已完成<b id="progDone">0</b>/<span id="progTotal">0</span></span>
+        <span class="ok">成功<b id="progOk">0</b></span>
+        <span class="err">失败<b id="progFail">0</b></span>
+        <span id="progCancelWrap" style="display:none"><span class="warn-pill">已请求取消，当前这封发完即停</span></span>
+      </div>
+      <div class="prog-cur" id="progCur">准备发送…</div>
+      <div class="prog-list" id="progList"></div>
+      <p class="hint" style="margin:10px 0 0">发送在服务后台进行，关闭/刷新页面不会中断；刷新后回到本页会自动恢复进度显示。</p>
+      <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn danger" id="btnCancelSend">取消发送</button>
+        <button class="btn" id="btnRetryFailed" style="display:none">仅重发失败项</button>
+        <button class="btn ghost" id="btnClearSent" style="display:none">清空列表</button>
+        <span class="muted" id="progStat"></span>
       </div>
     </div>
   </section>
@@ -349,8 +418,19 @@
   <!-- 日志 -->
   <section class="panel" id="tab-logs">
     <div class="card">
-      <h3>发送记录</h3>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <h3 style="margin:0">发送记录</h3>
+        <a class="btn ghost" id="btnExportLogs" style="padding:4px 12px;text-decoration:none" href="/api/logs?download=1">导出 CSV</a>
+      </div>
+      <div id="logStats" class="prog-stats" style="margin-top:12px"></div>
+      <div class="row" style="margin:12px 0;align-items:flex-end">
+        <div><label style="margin-top:0">状态</label>
+          <select id="logFStatus"><option value="">全部</option><option value="成功">仅成功</option><option value="失败">仅失败</option></select></div>
+        <div><label style="margin-top:0">平台</label><select id="logFPlat"><option value="">全部</option></select></div>
+        <div><label style="margin-top:0">关键词（客户 / 主题 / 收件邮箱）</label><input type="text" id="logFKw" placeholder="如：张三 或 监管" /></div>
+      </div>
       <table id="logTable"><thead><tr><th>时间</th><th>类型</th><th>平台</th><th>客户姓名</th><th>主题</th><th>附件</th><th>状态</th></tr></thead><tbody></tbody></table>
+      <div id="logEmpty" class="muted" style="display:none;padding:14px 2px">没有符合筛选条件的记录</div>
     </div>
     <div class="card" style="margin-top:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
@@ -373,6 +453,17 @@
     <label>类型名称</label><input type="text" id="tName" />
     <label>主题格式（变量用 <code>{平台名称}</code> <code>{客户姓名}</code> <code>{日期}</code> 等）</label>
     <input type="text" id="tSubject" />
+    <div class="var-chips">点击插入变量：
+      <span class="var-chip" data-var="平台名称">{平台名称}</span>
+      <span class="var-chip" data-var="客户姓名">{客户姓名}</span>
+      <span class="var-chip" data-var="日期">{日期}</span>
+      <span class="var-chip" data-var="日期中文">{日期中文}</span>
+      <span class="var-chip" data-var="昨日">{昨日}</span>
+      <span class="var-chip" data-var="明日">{明日}</span>
+      <span class="var-chip" data-var="年月">{年月}</span>
+      <span class="var-chip" data-var="星期">{星期}</span>
+      <span class="var-chip" data-var="时间戳">{时间戳}</span>
+    </div>
     <label>发件人显示名（留空用账号默认）</label><input type="text" id="tSender" />
     <label>关联平台（填「全部」或逗号分隔的平台名）</label><input type="text" id="tRelated" />
     <label>备注</label><input type="text" id="tNote" />
@@ -406,6 +497,51 @@
     <div style="margin-top:16px;text-align:right">
       <button class="btn ghost" onclick="closeModal('platModal')">取消</button>
       <button class="btn" id="btnSavePlat">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 编辑正文 -->
+<div class="modal-mask" id="bodyModal">
+  <div class="modal" style="width:min(900px,94vw)">
+    <h3>编辑正文</h3>
+    <p class="hint" id="bodyModalMeta"></p>
+    <div class="two-col" style="margin-top:8px">
+      <div><label>正文（Markdown / 纯文本，保存后以编辑内容为准）</label><textarea id="bText" style="min-height:300px"></textarea></div>
+      <div><label>实时预览</label><div class="preview-box" id="bPreview" style="max-height:340px"></div></div>
+    </div>
+    <div style="margin-top:16px;text-align:right">
+      <button class="btn ghost" onclick="closeModal('bodyModal')">取消</button>
+      <button class="btn" id="btnSaveBody">保存正文</button>
+    </div>
+  </div>
+</div>
+
+<!-- 整封邮件预览 -->
+<div class="modal-mask" id="mailModal">
+  <div class="modal" style="width:min(900px,94vw)">
+    <h3>邮件预览</h3>
+    <div id="mailMeta" style="font-size:13px;line-height:2;margin-bottom:10px"></div>
+    <div class="mail-preview" id="mailBody"></div>
+    <div style="margin-top:16px;text-align:right"><button class="btn ghost" onclick="closeModal('mailModal')">关闭</button></div>
+  </div>
+</div>
+
+<!-- 手动添加邮件 -->
+<div class="modal-mask" id="manualModal">
+  <div class="modal">
+    <h3>手动添加邮件</h3>
+    <p class="hint">不上传文件，直接填写一条邮件。正文支持 Markdown，保存后进入「分组核对」。</p>
+    <div class="row">
+      <div><label>平台</label><select id="mPlat"></select></div>
+      <div><label>客户姓名</label><input type="text" id="mCust" placeholder="如：张三" /></div>
+      <div><label>邮件类型</label><select id="mType"></select></div>
+    </div>
+    <label>正文（Markdown / 纯文本）</label><textarea id="mBody" style="min-height:160px;font-size:13px"></textarea>
+    <label>实时预览</label><div class="preview-box" id="mPreview" style="max-height:200px"></div>
+    <div style="margin-top:16px;text-align:right">
+      <button class="btn ghost" onclick="closeModal('manualModal')">取消</button>
+      <button class="btn" id="btnSaveManual">添加到列表</button>
     </div>
   </div>
 </div>
@@ -459,6 +595,42 @@ async function init(){
   UP.from=(data.account&&data.account.user)||'';
   if(TYPES.length){ UP.type=TYPES[0].name; }
   $('#upPreviewStat').textContent='修改内容会自动校验，也可手动点「刷新校验」';
+  loadOverview();
+  resumeSendingBatch();
+}
+
+/** 上传页顶部总览：今日发送统计 + 配置规模 + 启用账号（打开页面先安心看一眼） */
+async function loadOverview(){
+  if(!BACKEND)return;
+  let rows=[];
+  try{ const r=await api('GET','/api/logs'); rows=(r.data&&r.data.entries)||[]; }catch(e){ return; }
+  const now=new Date(); const pad=(n)=>String(n).padStart(2,'0');
+  const todayStr=now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
+  const today=rows.filter((r0)=>String(r0[0]||'').slice(0,10)===todayStr);
+  const okN=today.filter((r0)=>r0[8]==='成功').length;
+  const failN=today.filter((r0)=>r0[8]==='失败').length;
+  $('#overviewBar').style.display='flex';
+  $('#overviewBar').innerHTML=
+    '<span>今日已发<b>'+today.length+'</b>封</span>'+
+    '<span class="ok">成功<b>'+okN+'</b></span>'+
+    (failN?'<span class="err">失败<b>'+failN+'</b></span>':'<span>失败<b>0</b></span>')+
+    '<span class="muted">｜ 平台 '+PLATFORMS.length+' 个 · 类型 '+TYPES.length+' 个</span>'+
+    '<span class="muted">｜ 启用账号：<b style="font-size:13px">'+(UP.from?esc(UP.from):'<span class="err">未配置</span>')+'</b></span>';
+}
+
+/** 页面刷新过但后台批次仍在发送：恢复进度显示（条目对位已丢，结束状态以发送日志为准） */
+async function resumeSendingBatch(){
+  if(!BACKEND)return;
+  const {data}=await api('GET','/api/send-progress');
+  if(!(data&&data.batch&&data.batch.status==='sending'))return;
+  curBatchId=data.batch.id;
+  curBatchEntries=[];
+  $('#sendProgCard').style.display='block';
+  $('#upConfirmCard').style.display='none';
+  $('#btnRetryFailed').style.display='none';
+  $('#btnClearSent').style.display='';
+  $('#progStat').textContent='页面刷新过：后台批次仍在发送，进度已恢复；结束后各条目结果以「发送日志」为准';
+  pollProgress();
 }
 async function loadTypes(){
   const {data}=await api('GET','/api/types');TYPES=Array.isArray(data)?data:[];
@@ -585,15 +757,59 @@ async function delAcc(id){
   const r=await api('DELETE','/api/accounts?id='+encodeURIComponent(id));
   if(r.ok){toast('已删除');loadAccounts();init();}else toast('删除失败');
 }
+let LOG_ENTRIES=[];
+let logFilterBound=false;
+function bindLogFilters(){
+  if(logFilterBound)return;
+  logFilterBound=true;
+  $('#logFStatus').onchange=applyLogFilter;
+  $('#logFPlat').onchange=applyLogFilter;
+  $('#logFKw').oninput=applyLogFilter;
+}
 async function loadLogs(){
   const {data}=await api('GET','/api/logs');
+  LOG_ENTRIES=(data.entries||[]).slice().reverse();
+  // 平台筛选项：日志里出现过的平台 ∪ 当前配置的平台
+  const plats=[];const seen={};
+  LOG_ENTRIES.forEach((e0)=>{const p=e0[2]||'';if(p&&!seen[p]){seen[p]=1;plats.push(p);}});
+  PLATFORMS.forEach((p0)=>{if(p0.name&&!seen[p0.name]){seen[p0.name]=1;plats.push(p0.name);}});
+  plats.sort();
+  const cur=$('#logFPlat').value;
+  $('#logFPlat').innerHTML='<option value="">全部</option>'+plats.map((n)=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  if(cur)$('#logFPlat').value=cur;
+  // 今日统计
+  const now=new Date();const pad=(n0)=>String(n0).padStart(2,'0');
+  const todayStr=now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
+  const today=LOG_ENTRIES.filter((e0)=>String(e0[0]||'').slice(0,10)===todayStr);
+  const okN=today.filter((e0)=>e0[8]==='成功').length;
+  $('#logStats').innerHTML=
+    '<span>今日已发<b>'+today.length+'</b>封</span>'+
+    '<span class="ok">成功<b>'+okN+'</b></span>'+
+    '<span class="err">失败<b>'+(today.length-okN)+'</b></span>'+
+    '<span class="muted">｜ 当前文件共 '+LOG_ENTRIES.length+' 条</span>';
+  bindLogFilters();
+  applyLogFilter();
+}
+function applyLogFilter(){
+  const st=$('#logFStatus').value;
+  const plat=$('#logFPlat').value;
+  const kw=$('#logFKw').value.trim().toLowerCase();
+  const rows=LOG_ENTRIES.filter((e0)=>{
+    if(st&&e0[8]!==st)return false;
+    if(plat&&(e0[2]||'')!==plat)return false;
+    if(kw){
+      const hay=((e0[3]||'')+'　'+(e0[6]||'')+'　'+(e0[4]||'')).toLowerCase();
+      if(hay.indexOf(kw)===-1)return false;
+    }
+    return true;
+  });
   const tb=$('#logTable tbody');
-  const rows=(data.entries||[]).slice().reverse();
   // CSV 列：0时间/1邮件类型/2平台/3客户姓名/4收件邮箱/5抄送/6主题/7附件/8状态/9详情/10配置行号；表格只显示 7 列，收件邮箱放 title + 客户名下小字
   tb.innerHTML=rows.map(e=>`<tr><td>${esc(e[0])}</td><td>${esc(e[1])}</td><td>${esc(e[2])}</td>
     <td title="${escAttr(e[4])}">${esc(e[3])}${e[4]?`<div class="muted" style="font-size:11px">${esc(e[4])}</div>`:''}</td>
     <td>${esc(e[6])}</td><td class="muted">${esc(e[7])}</td>
     <td><span class="pill ${e[8]==='成功'?'on':'off'}" title="${escAttr(e[9])}">${esc(e[8])}</span></td></tr>`).join('');
+  $('#logEmpty').style.display=rows.length?'none':'block';
 }
 async function loadErrLog(){
   try{
@@ -626,6 +842,21 @@ $('#btnNewType').onclick=()=>{editingTypeName=null;$('#typeModalTitle').textCont
   $('#tName').readOnly=false;$('#tRelated').value='全部';renderPreview();openModal('typeModal');};
 async function renderPreview(){const {data}=await api('POST','/api/render',{md:$('#tBody').value});$('#tPreview').innerHTML=data.html||'';}
 $('#tBody').oninput=renderPreview;
+let varTarget=null;
+['#tSubject','#tBody'].forEach((s)=>{ const el=$(s); el.addEventListener('focus',()=>{varTarget=el;}); });
+document.querySelectorAll('.var-chip').forEach((chip)=>{
+  chip.onclick=()=>{
+    const el=varTarget||$('#tSubject');
+    const v=chip.dataset.var;
+    const start=el.selectionStart==null?el.value.length:el.selectionStart;
+    const end=el.selectionEnd==null?start:el.selectionEnd;
+    el.value=el.value.slice(0,start)+'{'+v+'}'+el.value.slice(end);
+    el.focus();
+    const pos=start+('{' + v + '}').length;
+    try{el.setSelectionRange(pos,pos);}catch(_){}
+    el.dispatchEvent(new Event('input',{bubbles:true}));
+  };
+});
 $('#btnSaveType').onclick=async()=>{
   const body={name:$('#tName').value.trim(),subjectTemplate:$('#tSubject').value.trim(),
     senderName:$('#tSender').value.trim(),relatedPlatforms:$('#tRelated').value.trim()||'全部',
@@ -819,15 +1050,23 @@ function renderUpload() {
           const rawBody = pv.body || e.bodyText || '';
           const bodySnip = rawBody.replace(/\s+/g, ' ').slice(0, 36) + (rawBody.length > 36 ? '…' : '');
           const bodyTitle = escAttr(rawBody.slice(0, 800)).replace(/\r/g, '').replace(/\n/g, '&#10;');
+          const warns = e._warns || [];
           let statusCell;
-          if (e._status === 'ok') statusCell = `<span class="pill on">✓ 通过</span>`;
+          if (e._status === 'sent') statusCell = '<span class="pill sent">已发送</span>';
+          else if (e._status === 'sendfail')
+            statusCell = `<span class="pill off" title="${escAttr(e._sendErr || '发送失败，详见发送日志')}">发送失败</span>`;
+          else if (e._status === 'canceled') statusCell = '<span class="pill warn">已取消</span>';
+          else if (e._status === 'ok')
+            statusCell = `<span class="pill on">✓ 通过</span>${warns.length ? ` <span class="warn-pill" title="${escAttr(warns.join('；'))}">⚠ ${warns.length}</span>` : ''}`;
           else if (e._status === 'err')
             statusCell = `<span class="pill off" title="${esc((e._errs || []).join('；'))}">✗ 不通过</span>`;
           else statusCell = '<span class="muted">未校验</span>';
           const rowErr = e._status === 'err' ? ' row-err' : '';
           const errDetail = e._status === 'err'
             ? `<tr class="errDetail"><td colspan="11"><div class="errMsg">${esc((e._errs || []).join('；'))}</div></td></tr>`
-            : '';
+            : (e._status === 'ok' && warns.length
+              ? `<tr class="errDetail warnRow"><td colspan="11"><div class="errMsg">⚠ ${esc(warns.join('；'))}</div></td></tr>`
+              : '');
           return `<tr class="upRow${rowErr}" draggable="true" data-id="${e.id}">
             <td class="grip" title="拖动可跨平台分组" style="color:var(--sub)">⠿</td>
             <td><select class="upPlat">${pOpts}</select></td>
@@ -842,7 +1081,11 @@ function renderUpload() {
             <td class="muted" style="font-size:12px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(subj)}">${esc(subj)}</td>
             <td class="muted" style="font-size:12px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${bodyTitle}">${esc(bodySnip)}</td>
             <td>${statusCell}</td>
-            <td><button class="btn danger sm" data-del="${e.id}">删</button></td>
+            <td style="white-space:nowrap">
+              <button class="btn ghost xs" data-edit="${e.id}" title="编辑此封正文">编</button>
+              <button class="btn ghost xs" data-view="${e.id}" title="预览整封邮件">预览</button>
+              <button class="btn danger xs" data-del="${e.id}">删</button>
+            </td>
           </tr>${errDetail}`;
         })
         .join('');
@@ -853,7 +1096,7 @@ function renderUpload() {
         <table style="min-width:1100px;border-collapse:collapse;font-size:13px">
           <thead><tr>
             <th></th><th>平台</th><th>客户姓名</th><th>文件</th><th>类型</th><th>附件</th>
-            <th>发送邮箱</th><th>邮件主题</th><th>邮件内容</th><th>校验状态</th><th></th>
+            <th>发送邮箱</th><th>邮件主题</th><th>邮件内容</th><th>校验状态</th><th>操作</th>
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
@@ -867,6 +1110,7 @@ function renderUpload() {
 // 校验错误横幅（就近反馈：错误统计出现在分组卡片顶部，无法被忽略）
 function updateErrBanner() {
   const errEntries = UP.entries.filter((e) => e._status === 'err');
+  const warnEntries = UP.entries.filter((e) => e._status === 'ok' && (e._warns || []).length);
   const eb = $('#upErrBanner');
   if (errEntries.length) {
     const plats = [];
@@ -876,9 +1120,15 @@ function updateErrBanner() {
     });
     eb.innerHTML = `⚠ <div><b>${errEntries.length} 封邮件未通过校验</b>，请修正后再发送。涉及平台：${esc(plats.join('、'))}</div>`;
     eb.classList.add('show');
+    eb.classList.remove('warnmode');
+  } else if (warnEntries.length) {
+    const lines = [];
+    warnEntries.forEach((e) => (e._warns || []).forEach((w) => lines.push(`${e.platform || '未指定平台'}：${w}`)));
+    eb.innerHTML = `⚠ <div><b>${warnEntries.length} 封校验通过但有提醒</b>（不阻断发送）：${esc(lines.slice(0, 3).join('；'))}${lines.length > 3 ? ` 等 ${lines.length} 条` : ''}。明细见表格内黄色提示行。</div>`;
+    eb.classList.add('show', 'warnmode');
   } else {
     eb.innerHTML = '';
-    eb.classList.remove('show');
+    eb.classList.remove('show', 'warnmode');
   }
 }
 
@@ -964,6 +1214,12 @@ function bindUploadEvents() {
       renderUpload();
     };
   });
+  document.querySelectorAll('[data-edit]').forEach((b) => {
+    b.onclick = () => openBodyEditor(b.dataset.edit);
+  });
+  document.querySelectorAll('[data-view]').forEach((b) => {
+    b.onclick = () => openMailPreview(b.dataset.view);
+  });
 }
 
 const UPLOAD_BATCH_SIZE = 50;
@@ -1037,9 +1293,13 @@ async function uploadAttachments(files, eid) {
   }
 }
 
+/** 待发送条目：已发送（_status==='sent'）的不再重复发送 */
+function activeEntries() {
+  return UP.entries.filter((e) => e._status !== 'sent');
+}
 function jobsFromEntries() {
   const contact = $('#upContact').value.trim();
-  return UP.entries.map((e) => ({
+  return activeEntries().map((e) => ({
     type: e.type || UP.type,
     platform: e.platform,
     customer: e.customer || contact || '',
@@ -1071,21 +1331,26 @@ $('#btnUpPreview').onclick = async () => {
   if (!BACKEND) { toast('预览模式：校验需本地/内网后端'); return; }
   if (!UP.entries.length) { toast('请先上传或添加邮件'); return; }
   $('#upPreviewStat').textContent = '校验中…';
+  const act = activeEntries();
   const { data } = await api('POST', '/api/preview-draft', { jobs: jobsFromEntries() });
   if (data.error) { toast('校验失败: ' + data.error); $('#upPreviewStat').textContent = ''; return; }
   data.items.forEach((it, idx) => {
-    const e = UP.entries[idx];
+    const e = act[idx];
     if (!e) return;
-    if (it.errors && it.errors.length) { e._status = 'err'; e._errs = it.errors; }
-    else { e._status = 'ok'; e._errs = []; }
-    e._preview = { to: it.to || [], subject: it.subject || '', body: it.body || '' };
+    if (it.errors && it.errors.length) { e._status = 'err'; e._errs = it.errors; e._warns = []; }
+    else { e._status = 'ok'; e._errs = []; e._warns = (it.warnings || []).slice(); }
+    e._preview = { to: it.to || [], subject: it.subject || '', body: it.body || '', html: it.html || '' };
   });
+  await checkDuplicateSends();
   renderUpload();
   const bad = data.items.filter((i) => i.errors && i.errors.length).length;
+  const warnN = act.filter((e) => e._status === 'ok' && (e._warns || []).length).length;
   $('#upPreviewStat').textContent = bad
     ? `⚠ ${bad} 封有错误，修正后再发`
-    : `✓ 全部通过（${data.items.length} 封）`;
-  $('#upConfirmCard').style.display = bad ? 'none' : 'block';
+    : warnN
+      ? `✓ 全部通过（${data.items.length} 封，其中 ${warnN} 封有提醒，见表格黄色行）`
+      : `✓ 全部通过（${data.items.length} 封）`;
+  $('#upConfirmCard').style.display = bad || !act.length ? 'none' : 'block';
   updateUpSendBtn();
   if (bad) {
     const eb = $('#upErrBanner');
@@ -1096,6 +1361,7 @@ $('#btnUpPreview').onclick = async () => {
 };
 $('#btnUpSend').onclick = () => {
   if (!BACKEND) { toast('预览模式：发送需本地/内网服务端'); return; }
+  if (!activeEntries().length) { toast('没有待发送的邮件（已发送过的不会重复发送）'); return; }
   renderConfirmModal();
   openModal('upConfirmModal');
 };
@@ -1103,53 +1369,61 @@ $('#btnUpConfirmBack').onclick = () => closeModal('upConfirmModal');
 $('#btnUpConfirmFinal').onclick = async () => {
   const fb = $('#btnUpConfirmFinal');
   fb.disabled = true;
-  fb.textContent = '发送中…';
-  const { data } = await api('POST', '/api/send-draft', { jobs: jobsFromEntries(), interval: 3 });
+  fb.textContent = '提交中…';
+  const act = activeEntries();
+  const interval = Number($('#upInterval').value) || 3;
+  const { data } = await api('POST', '/api/send-draft', { jobs: jobsFromEntries(), interval });
   fb.disabled = false;
   fb.textContent = '确认发送';
-  closeModal('upConfirmModal');
-  $('#upSendStat').textContent = '发送中…';
   if (data.error) {
     toast('已拒发: ' + data.error);
     $('#upSendStat').textContent = '';
+    closeModal('upConfirmModal');
     if (data.items) {
-      data.items.forEach((it, idx) => {
-        const e = UP.entries[idx];
+      // 拒发时后端只返回出错项（platform/subject/errors），按主题+平台对位标注
+      data.items.forEach((it) => {
+        const e = (typeof it.index === 'number' ? act[it.index] : null) ||
+          act.find(
+            (x) => (x.platform || '') === (it.platform || '') &&
+              ((x._preview && x._preview.subject) || '') === (it.subject || '')
+          );
         if (e) { e._status = 'err'; e._errs = it.errors || []; }
       });
       renderUpload();
     }
     return;
   }
-  const ok = data.results.filter((r) => r.ok).length;
-  const fail = data.results.length - ok;
-  toast(`发送完成：成功 ${ok}，失败 ${fail}`);
-  $('#upSendStat').textContent = `成功 ${ok} / 失败 ${fail}`;
-  UP.entries = [];
-  renderUpload();
+  closeModal('upConfirmModal');
+  $('#upSendStat').textContent = '';
+  startProgressPolling(data.batchId, act);
 };
 
 function renderConfirmModal() {
+  const act = activeEntries();
   const groups = {};
-  for (const e of UP.entries) {
+  for (const e of act) {
     const key = e.platform || '__none__';
     (groups[key] = groups[key] || []).push(e);
   }
   // 汇总条：发送前一眼看清规模（microinteractions: 确认弹窗需给出明确的总量信息）
   let recipients = 0, attachments = 0, errCount = 0, noPlat = 0;
   const platSet = {};
-  for (const e of UP.entries) {
+  for (const e of act) {
     recipients += e._preview && e._preview.to ? e._preview.to.length : 0;
     attachments += e.attachments ? e.attachments.length : 0;
     if (e.platform) platSet[e.platform] = 1; else noPlat++;
     if (e._status === 'err') errCount++;
   }
   const platCount = Object.keys(platSet).length;
+  const sentCount = UP.entries.length - act.length;
+  const warnN = act.filter((e) => e._status === 'ok' && (e._warns || []).length).length;
   const warnLines = [];
   if (errCount) warnLines.push(`有 ${errCount} 封未通过校验`);
   if (noPlat) warnLines.push(`${noPlat} 封未指定平台`);
+  if (warnN) warnLines.push(`${warnN} 封有提醒（如当日重复），请再核对`);
+  if (sentCount) warnLines.push(`${sentCount} 封已发送过，本次不会重复发送`);
   $('#upConfirmSummary').innerHTML =
-    `<div class="sum-item"><span class="sum-num">${UP.entries.length}</span><span class="sum-lbl">邮件总数</span></div>` +
+    `<div class="sum-item"><span class="sum-num">${act.length}</span><span class="sum-lbl">本次发送</span></div>` +
     `<div class="sum-item"><span class="sum-num">${recipients}</span><span class="sum-lbl">收件人</span></div>` +
     `<div class="sum-item"><span class="sum-num">${attachments}</span><span class="sum-lbl">附件</span></div>` +
     `<div class="sum-item"><span class="sum-num">${platCount}</span><span class="sum-lbl">平台</span></div>` +
@@ -1175,6 +1449,228 @@ function renderConfirmModal() {
   $('#upConfirmBody').innerHTML = html;
 }
 
+// ===== 发送进度（轮询 /api/send-progress，实时逐封反馈 + 可取消） =====
+let progTimer = null;
+let curBatchId = null;
+let curBatchEntries = [];
+
+function startProgressPolling(batchId, actEntries) {
+  curBatchId = batchId;
+  curBatchEntries = actEntries || activeEntries();
+  $('#upConfirmCard').style.display = 'none';
+  $('#sendProgCard').style.display = 'block';
+  $('#btnCancelSend').style.display = '';
+  $('#btnCancelSend').disabled = false;
+  $('#btnRetryFailed').style.display = 'none';
+  $('#btnClearSent').style.display = 'none';
+  $('#progCancelWrap').style.display = 'none';
+  $('#progFill').style.width = '0%';
+  $('#progList').innerHTML = '';
+  $('#progStat').textContent = '';
+  $('#progCur').textContent = '准备发送…';
+  clearTimeout(progTimer);
+  pollProgress();
+}
+
+async function pollProgress() {
+  if (!curBatchId) return;
+  const { data } = await api('GET', '/api/send-progress?id=' + encodeURIComponent(curBatchId));
+  if (!curBatchId) return; // 等待期间用户点了清空/重发
+  if (data.error) {
+    $('#progStat').textContent = '进度查询失败：' + data.error;
+    return;
+  }
+  renderProgress(data);
+  if (data.status === 'sending') {
+    progTimer = setTimeout(pollProgress, 900);
+    return;
+  }
+  finishProgress(data);
+}
+
+function renderProgress(d) {
+  const total = d.total || 1;
+  $('#progTotal').textContent = d.total;
+  $('#progDone').textContent = d.done;
+  $('#progOk').textContent = d.ok;
+  $('#progFail').textContent = d.fail;
+  $('#progFill').style.width = Math.round((d.done / total) * 100) + '%';
+  $('#progCancelWrap').style.display = d.cancelRequested ? '' : 'none';
+  const last = d.items[d.items.length - 1];
+  $('#progCur').textContent =
+    d.status === 'sending'
+      ? '正在发送：' + (last && last.subject ? last.subject : '…')
+      : '';
+  $('#progList').innerHTML = d.items
+    .map((it) => `<div class="prog-item">
+      <span class="pill ${it.canceled ? 'warn' : it.ok ? 'on' : 'off'}">${it.canceled ? '取消' : it.ok ? '成功' : '失败'}</span>
+      <span class="pi-sub" title="${escAttr(it.subject || '')}">${esc(it.subject || '')}</span>
+      <span class="muted" style="font-size:12px;white-space:nowrap">${esc(it.platform || '')}</span>
+      ${it.error ? `<span class="err pi-err" style="font-size:12px" title="${escAttr(it.error)}">${esc(it.error)}</span>` : ''}
+    </div>`)
+    .join('');
+  const listEl = $('#progList');
+  listEl.scrollTop = listEl.scrollHeight;
+}
+
+function finishProgress(d) {
+  $('#btnCancelSend').style.display = 'none';
+  $('#progCur').textContent = '发送结束' + (d.durationMs ? '（用时 ' + Math.round(d.durationMs / 1000) + ' 秒）' : '') + (d.canceled ? '，已按请求取消' : '');
+  // 按序号回写条目状态（jobs 与 activeEntries 顺序一致）
+  const byIndex = {};
+  d.items.forEach((it) => { byIndex[it.index] = it; });
+  curBatchEntries.forEach((e, i) => {
+    const it = byIndex[i];
+    if (it && it.ok) { e._status = 'sent'; e._sendErr = ''; }
+    else if (it && it.canceled) { e._status = 'canceled'; }
+    else if (it) { e._status = 'sendfail'; e._sendErr = it.error || ''; }
+    else { e._status = 'canceled'; }
+  });
+  const failCount = curBatchEntries.filter((e) => e._status === 'sendfail').length;
+  if (d.error) {
+    toast('发送批次出错：' + d.error);
+    $('#progStat').textContent = '批次出错：' + d.error + '（已发送的以列表状态为准，失败可点「仅重发失败项」）';
+  } else {
+    toast('发送完成：成功 ' + d.ok + (failCount ? '，失败 ' + failCount : '') + (d.canceledCount ? '，取消 ' + d.canceledCount : ''));
+    $('#progStat').textContent =
+      '成功 ' + d.ok + ' / 失败 ' + d.fail + (d.canceledCount ? ' / 取消 ' + d.canceledCount : '') +
+      (failCount || d.canceledCount ? '，失败与取消的条目仍保留在列表，可修正后重发' : '');
+  }
+  $('#btnRetryFailed').style.display = failCount || d.canceledCount ? '' : 'none';
+  $('#btnClearSent').style.display = '';
+  renderUpload();
+  loadOverview();
+}
+
+$('#btnCancelSend').onclick = async () => {
+  if (!curBatchId) return;
+  $('#btnCancelSend').disabled = true;
+  const { data } = await api('POST', '/api/send-cancel', { id: curBatchId });
+  if (data.error) { toast(data.error); $('#btnCancelSend').disabled = false; }
+  else { toast('已请求取消，当前这封发完即停'); $('#progCancelWrap').style.display = ''; }
+};
+
+$('#btnRetryFailed').onclick = () => {
+  const keep = UP.entries.filter((e) => e._status === 'sendfail' || e._status === 'canceled');
+  if (!keep.length) { toast('没有失败或取消的条目'); return; }
+  keep.forEach((e) => {
+    e._status = '';
+    e._errs = [];
+    e._warns = [];
+    e._sendErr = '';
+    e._preview = null;
+  });
+  UP.entries = keep;
+  curBatchId = null;
+  clearTimeout(progTimer);
+  $('#sendProgCard').style.display = 'none';
+  renderUpload();
+  $('#upPreviewStat').textContent = '已保留 ' + keep.length + ' 封失败/取消条目，正在重新校验…';
+  debouncedPreview(300);
+};
+
+$('#btnClearSent').onclick = () => {
+  UP.entries = [];
+  curBatchId = null;
+  clearTimeout(progTimer);
+  $('#sendProgCard').style.display = 'none';
+  renderUpload();
+};
+
+// ===== 编辑正文（模态框 + Markdown 实时预览，保存后以编辑内容为准） =====
+let editingBodyId = null;
+let bodyPrevTimer = null;
+
+function openBodyEditor(id) {
+  const e0 = UP.entries.find((x) => x.id === id);
+  if (!e0) return;
+  if (e0._status === 'sent') { toast('此封已发送，不再修改'); return; }
+  editingBodyId = id;
+  $('#bodyModalMeta').textContent =
+    '平台：' + (e0.platform || '未指定') + ' ｜ 客户：' + (e0.customer || '—') + ' ｜ 来源：' +
+    (e0.bodyFileId ? '上传文件 ' + e0.fileName : e0.bodyText ? '手动输入' : '模板正文（校验后可见）');
+  $('#bText').value = (e0._preview && e0._preview.body) || e0.bodyText || '';
+  renderBodyPreview();
+  openModal('bodyModal');
+}
+
+async function renderBodyPreview() {
+  const { data } = await api('POST', '/api/render', { md: $('#bText').value });
+  $('#bPreview').innerHTML = data.html || '';
+}
+$('#bText').oninput = () => {
+  clearTimeout(bodyPrevTimer);
+  bodyPrevTimer = setTimeout(renderBodyPreview, 400);
+};
+$('#btnSaveBody').onclick = () => {
+  const e0 = UP.entries.find((x) => x.id === editingBodyId);
+  if (!e0) { closeModal('bodyModal'); return; }
+  const txt = $('#bText').value;
+  if (!txt.trim()) { toast('正文为空。若想改用类型模板正文，直接关闭不保存即可'); return; }
+  e0.bodyText = txt;
+  e0.bodyFileId = ''; // 编辑后的文本优先于上传文件
+  e0._status = '';
+  e0._errs = [];
+  e0._warns = [];
+  e0._preview = null;
+  closeModal('bodyModal');
+  renderUpload();
+  debouncedPreview(300);
+};
+
+// ===== 整封邮件预览（收件人 / 主题 / 正文渲染效果 / 附件） =====
+async function openMailPreview(id) {
+  const e0 = UP.entries.find((x) => x.id === id);
+  if (!e0) return;
+  const pv = e0._preview || {};
+  const to = pv.to && pv.to.length ? pv.to.join('；') : '—（未校验或平台未配置收件邮箱）';
+  $('#mailMeta').innerHTML =
+    '<div><b>主题：</b>' + esc(pv.subject || '—（校验后生成）') + '</div>' +
+    '<div><b>收件：</b>' + esc(to) + '</div>' +
+    '<div><b>发件：</b>' + esc(UP.from || '—') + '</div>' +
+    '<div><b>平台 / 客户：</b>' + esc(e0.platform || '—') + ' / ' + esc(e0.customer || '—') + '</div>' +
+    '<div><b>附件：</b>' + ((e0.attachments || []).length ? esc(e0.attachments.map((a) => a.name || a).join('；')) : '—') + '</div>';
+  const box = $('#mailBody');
+  if (pv.html) box.innerHTML = pv.html;
+  else if (pv.body) {
+    box.textContent = '渲染中…';
+    const { data } = await api('POST', '/api/render', { md: pv.body });
+    box.innerHTML = data.html || '';
+  } else {
+    box.innerHTML = '<p class="muted">（尚未校验或正文为空：点上方「刷新校验」后即可看到渲染效果）</p>';
+  }
+  openModal('mailModal');
+}
+
+// ===== 重复发送检测：对照当日已成功发送记录（同平台+客户+主题 → 警告，不阻断） =====
+async function checkDuplicateSends() {
+  if (!BACKEND) return;
+  let rows = [];
+  try {
+    const r = await api('GET', '/api/logs');
+    rows = (r.data && r.data.entries) || [];
+  } catch (e) { return; }
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const todayStr = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+  const sentKeys = {};
+  rows.forEach((r0) => {
+    if (String(r0[0] || '').slice(0, 10) === todayStr && r0[8] === '成功') {
+      sentKeys[(r0[2] || '') + '|' + (r0[3] || '') + '|' + (r0[6] || '')] = r0[0];
+    }
+  });
+  let dup = 0;
+  activeEntries().forEach((e) => {
+    if (e._status !== 'ok') return;
+    const key = (e.platform || '') + '|' + (e.customer || '') + '|' + ((e._preview && e._preview.subject) || '');
+    if (sentKeys[key]) {
+      dup += 1;
+      e._warns = (e._warns || []).concat(['当日 ' + sentKeys[key] + ' 已成功发送过同主题邮件，请确认不是重复发送']);
+    }
+  });
+  if (dup) toast('注意：' + dup + ' 封与当日已发送邮件重复，请核对（见表格黄色提示）');
+}
+
 // 拖拽 / 点击上传
 const dz = $('#dropzone');
 dz.onclick = () => $('#upFile').click();
@@ -1198,22 +1694,40 @@ dz.addEventListener('drop', (e) => {
   if (e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files);
 });
 $('#btnManual').onclick = () => {
-  const fn = prompt('文件名（如 国茂-张三.md，用于自动解析平台与客户）：', '国茂-张三.md');
-  if (fn === null) return;
-  const body = prompt('邮件正文（Markdown / 纯文本）：', '尊敬的对接人：\n\n此为测试邮件正文。');
-  if (body === null) return;
-  const parsed = parseFileName(fn);
+  $('#mPlat').innerHTML = '<option value="">— 选平台 —</option>' +
+    knownPlatformNames().map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  $('#mType').innerHTML = '<option value="">默认：' + esc(UP.type || '未设') + '</option>' +
+    TYPES.map((t) => `<option value="${esc(t.name)}">${esc(t.name)}</option>`).join('');
+  $('#mCust').value = '';
+  $('#mBody').value = '';
+  openModal('manualModal');
+};
+let mPrevTimer=null;
+async function renderManualPreview(){
+  const { data } = await api('POST', '/api/render', { md: $('#mBody').value });
+  $('#mPreview').innerHTML = data.html || '';
+}
+$('#mBody').oninput = () => {
+  clearTimeout(mPrevTimer);
+  mPrevTimer = setTimeout(renderManualPreview, 400);
+};
+$('#btnSaveManual').onclick = () => {
+  const plat = $('#mPlat').value;
+  if (!plat) { toast('请选择平台'); return; }
+  if (!$('#mBody').value.trim()) { toast('请填写邮件正文'); return; }
   UP.entries.push({
     id: 'e' + Math.random().toString(36).slice(2),
-    fileName: fn,
+    fileName: '（手动添加）',
     bodyFileId: '',
-    bodyText: body,
-    type: parsed.type || '',
-    platform: parsed.platform,
-    customer: parsed.customer,
+    bodyText: $('#mBody').value,
+    type: $('#mType').value || '',
+    platform: plat,
+    customer: $('#mCust').value.trim(),
     attachments: [],
     _status: '',
+    _preview: null,
   });
+  closeModal('manualModal');
   renderUpload();
   debouncedPreview(300);
 };

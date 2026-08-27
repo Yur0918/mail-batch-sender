@@ -45,6 +45,23 @@ const LOG_DIR = path.join(ROOT, 'logs');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 fs.mkdirSync(LOG_DIR, { recursive: true });
 
+// ---------- 发送批次（后台执行，前端轮询进度 / 可取消） ----------
+// id -> { id, status:'sending'|'done', total, done, ok, fail, canceled, cancelRequested,
+//         canceledCount, error, items:[{index,ok,canceled,subject,platform,customer,error}], ... }
+const SEND_BATCHES = new Map();
+const BATCH_TTL = 30 * 60 * 1000; // 完成后保留 30 分钟供前端查询，之后自动释放
+
+// 启动时清理 24 小时前的残留上传临时文件（历史失败/取消批次可能遗留）
+try {
+  const cutoff = Date.now() - 24 * 3600 * 1000;
+  for (const f of fs.readdirSync(UPLOAD_DIR)) {
+    const p = path.join(UPLOAD_DIR, f);
+    try {
+      if (fs.statSync(p).mtimeMs < cutoff) fs.unlinkSync(p);
+    } catch (_) {}
+  }
+} catch (_) {}
+
 // 安装全局报错捕获：把控制台输出镜像到 logs/mailer-error.log，并捕获崩溃/未处理 rejection。
 // 这样以后再报错，根因一步可查（界面「发送日志」tab 里也能看/下载）。
 installGlobalHandlers();
@@ -57,6 +74,7 @@ ErrorLog.info('邮件后台启动', {
 });
 
 const app = express();
+app.get('/favicon.ico', (req, res) => res.status(204).end());
 app.use(express.json({ limit: '5mb' }));
 app.use(express.static(path.join(ROOT, 'public')));
 
@@ -349,20 +367,25 @@ app.post('/api/preview-draft', async (req, res) => {
   }
 });
 
-// ---------- 草稿（上传邮件）：发送 ----------
+// ---------- 草稿（上传邮件）：发送（后台批次，返回 batchId 供轮询进度/取消） ----------
 app.post('/api/send-draft', async (req, res) => {
   try {
     const { jobs, interval } = req.body;
     if (!Array.isArray(jobs) || !jobs.length) return res.status(400).json({ error: '没有邮件条目' });
+    for (const b of SEND_BATCHES.values()) {
+      if (b.status === 'sending') {
+        return res.status(400).json({ error: '已有发送批次正在进行中，请等它完成（或在上传页取消）后再发' });
+      }
+    }
     const wb = await loadWorkbook(WB);
     const items = jobs.map((j) =>
       compileJob(j, { wb, uploadDir: UPLOAD_DIR, attachDir: ATTACH_DIR })
     );
-    const bad = items.filter((i) => i.errors.length);
+    const bad = items.map((i, idx) => ({ i, idx })).filter((x) => x.i.errors.length);
     if (bad.length) {
       return res.status(400).json({
         error: '存在校验错误，已拒绝发送（保护收件人不发错）',
-        items: bad.map((i) => ({ platform: i.platform, subject: i.subject, errors: i.errors })),
+        items: bad.map((x) => ({ index: x.idx, platform: x.i.platform, subject: x.i.subject, errors: x.i.errors })),
       });
     }
     if (!items.length) return res.status(400).json({ error: '没有可发送的邮件' });
@@ -371,11 +394,53 @@ app.post('/api/send-draft', async (req, res) => {
     if (!smtp) {
       return res.status(400).json({ error: '尚未启用任何发件账号。请到「账号配置」标签页启用一个账号（连接测试通过后再发）' });
     }
+
+    const id = crypto.randomBytes(8).toString('hex');
     const logger = new Logger(LOG_DIR);
-    const results = await sendItems(items, {
+    const batch = {
+      id,
+      status: 'sending',
+      total: items.length,
+      done: 0,
+      ok: 0,
+      fail: 0,
+      canceled: false,
+      cancelRequested: false,
+      canceledCount: 0,
+      error: '',
+      items: [],
+      logFile: logger.file,
+    };
+    SEND_BATCHES.set(id, batch);
+    // 后台执行，立即返回 batchId；进度通过 /api/send-progress 轮询
+    runDraftBatch(batch, items, {
       smtp,
-      interval: (Number(interval) || 3) * 1000,
-      onEach: ({ item, ok, info, error }) => {
+      intervalSec: Number(interval) || 3,
+      logger,
+      jobs,
+    }).catch((e) => {
+      batch.status = 'done';
+      batch.error = (e && e.message) || String(e);
+      ErrorLog.error('发送批次异常', { batch: id, error: batch.error });
+    });
+    res.json({ ok: true, batchId: id, total: items.length });
+  } catch (e) {
+    ErrorLog.error('发送异常(/api/send-draft)', e);
+    res.status(500).json({ error: e.message, tips: explainSmtpError(e.message, '') });
+  }
+});
+
+/** 后台跑一个发送批次：逐封更新进度；只清理「已成功发送」条目的上传临时文件（失败/取消的保留以便重发） */
+async function runDraftBatch(batch, items, opts) {
+  const { smtp, intervalSec, logger, jobs } = opts;
+  const startedAt = Date.now();
+  let results = [];
+  try {
+    results = await sendItems(items, {
+      smtp,
+      interval: intervalSec * 1000,
+      shouldStop: () => batch.cancelRequested,
+      onEach: ({ index, item, ok, info, error }) => {
         logger.append({
           type: item.type,
           platform: item.platform,
@@ -388,27 +453,92 @@ app.post('/api/send-draft', async (req, res) => {
           detail: ok ? info.messageId : error,
           row: item.row,
         });
+        batch.done += 1;
+        if (ok) batch.ok += 1;
+        else batch.fail += 1;
+        batch.items.push({
+          index,
+          ok,
+          canceled: false,
+          subject: item.subject,
+          platform: item.platform,
+          customer: item.customer || '',
+          error: ok ? '' : error && error.message ? error.message : String(error || ''),
+        });
       },
     });
-
-    // 发送成功后清理本次上传的临时文件
-    const used = new Set();
-    jobs.forEach((j) => {
-      if (j.bodyFileId) used.add(path.basename(j.bodyFileId));
-      // f 可能是字符串（旧接口）或 {id,name} 对象（前端 jobsFromEntries 当前形态），兼容两种
-      (j.attachments || []).forEach((f) => used.add(path.basename(typeof f === 'string' ? f : f.id)));
-    });
-    used.forEach((n) => {
-      const p = path.join(UPLOAD_DIR, n);
-      try {
-        fs.unlinkSync(p);
-      } catch (_) {}
-    });
-    res.json({ results, logFile: logger.file });
   } catch (e) {
-    ErrorLog.error('发送异常(/api/send-draft)', e);
-    res.status(500).json({ error: e.message, tips: explainSmtpError(e.message, '') });
+    batch.error = (e && e.message) || String(e);
   }
+  batch.canceledCount = results.filter((r) => r.canceled).length;
+  batch.canceled = batch.canceledCount > 0;
+  results.forEach((r) => {
+    if (r.canceled) {
+      batch.items.push({ index: r.index, ok: false, canceled: true, subject: r.subject || '', error: '已取消' });
+    }
+  });
+  batch.status = 'done';
+  batch.durationMs = Date.now() - startedAt;
+
+  // 只清理成功发送条目的上传临时文件；失败/取消的保留（前端「仅重发失败项」还要用）
+  const used = new Set();
+  results.forEach((r, idx) => {
+    if (!r.ok) return;
+    const j = jobs[idx];
+    if (!j) return;
+    if (j.bodyFileId) used.add(path.basename(j.bodyFileId));
+    // f 可能是字符串（旧接口）或 {id,name} 对象（前端 jobsFromEntries 当前形态），兼容两种
+    (j.attachments || []).forEach((f) => used.add(path.basename(typeof f === 'string' ? f : f.id)));
+  });
+  used.forEach((n) => {
+    const p = path.join(UPLOAD_DIR, n);
+    try {
+      fs.unlinkSync(p);
+    } catch (_) {}
+  });
+  setTimeout(() => SEND_BATCHES.delete(batch.id), BATCH_TTL).unref();
+}
+
+function batchView(b) {
+  return {
+    id: b.id,
+    status: b.status,
+    total: b.total,
+    done: b.done,
+    ok: b.ok,
+    fail: b.fail,
+    canceled: b.canceled,
+    cancelRequested: b.cancelRequested,
+    canceledCount: b.canceledCount,
+    error: b.error,
+    items: b.items,
+    logFile: b.logFile,
+    durationMs: b.durationMs || null,
+  };
+}
+
+// ---------- 发送进度查询 / 取消 ----------
+app.get('/api/send-progress', (req, res) => {
+  const id = String(req.query.id || '');
+  if (!id) {
+    // 不带 id：返回当前进行中的批次（页面刷新后恢复进度显示用；无则 batch=null）
+    let cur = null;
+    for (const b of SEND_BATCHES.values()) {
+      if (b.status === 'sending') { cur = batchView(b); break; }
+    }
+    return res.json({ batch: cur });
+  }
+  const b = SEND_BATCHES.get(id);
+  if (!b) return res.status(404).json({ error: '批次不存在或已过期（完成 30 分钟后自动清除）' });
+  res.json(batchView(b));
+});
+
+app.post('/api/send-cancel', (req, res) => {
+  const b = SEND_BATCHES.get((req.body && req.body.id) || String(req.query.id || ''));
+  if (!b) return res.status(404).json({ error: '批次不存在或已过期' });
+  if (b.status !== 'sending') return res.status(400).json({ error: '批次已结束，无需取消' });
+  b.cancelRequested = true;
+  res.json({ ok: true });
 });
 
 // ---------- 运行报错日志（供界面查看/下载，一步定位根因） ----------
@@ -440,6 +570,11 @@ app.get('/api/logs', (req, res) => {
     .sort();
   if (!files.length) return res.json({ entries: [], file: null });
   const latest = path.join(LOG_DIR, files[files.length - 1]);
+  if (req.query.download) {
+    res.setHeader('Content-Disposition', 'attachment; filename="send-log.csv"; filename*=UTF-8\'\'' + encodeURIComponent('发送记录.csv'));
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    return fs.createReadStream(latest).pipe(res);
+  }
   const text = fs.readFileSync(latest, 'utf8').replace(/^\uFEFF/, '');
   const entries = text
     .split(/\r?\n/)
