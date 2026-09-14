@@ -4,8 +4,9 @@
 /**
  * 邮件后台 Web 服务（自托管小工具，经办在浏览器里用）
  *
- *   node server.js           启动，默认 http://localhost:3000
- *   PORT=8080 node server.js 指定端口
+ *   node server.js             启动，默认仅本机 http://127.0.0.1:3000
+ *   PORT=8080 node server.js   指定端口
+ *   HOST=0.0.0.0 node server.js 局域网访问（无登录口令，仅限信任网络）
  *
  * 多对多模型：类型(模板) × 平台(收件人)。与 CLI 共用 config/邮件配置.xlsx 与 ~/.config/mail-skills/.env。
  */
@@ -606,8 +607,13 @@ app.use(function (err, req, res, next) {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n邮件后台已启动：http://localhost:${PORT}`);
+// 默认仅绑定本机回环地址（安全收敛）；如需局域网访问，显式设置 HOST=0.0.0.0（无登录口令，仅限信任网络）。
+const HOST = process.env.HOST || '127.0.0.1';
+app.listen(PORT, HOST, () => {
+  const wildcard = HOST === '0.0.0.0' || HOST === '::';
+  const browseUrl = `http://${wildcard ? 'localhost' : HOST}:${PORT}`;
+  console.log(`\n邮件后台已启动：${browseUrl}`);
+  console.log(`监听地址：${HOST}:${PORT}${wildcard ? '（局域网可访问：无登录口令，仅限信任网络）' : '（仅本机可访问）'}`);
   console.log(`配置文件：${WB}`);
   console.log(`账号配置：${require('./lib/account').CONFIG_FILE}\n`);
   // 重置报错日志为本次运行（GBK 覆盖写），避免旧版 UTF-8 残留与本轮 GBK 混合导致乱码
@@ -618,11 +624,12 @@ app.listen(PORT, '0.0.0.0', () => {
     node: process.version,
     platform: process.platform,
     arch: process.arch,
+    host: HOST,
     port: PORT,
     dataDir: process.env.MAILER_DATA_DIR || '(默认)',
-    url: `http://localhost:${PORT}`,
+    url: browseUrl,
   });
-  ErrorLog.info('已监听端口', { port: PORT, url: `http://localhost:${PORT}` });
+  ErrorLog.info('已监听端口', { host: HOST, port: PORT, url: browseUrl });
 });
 
 module.exports = app;
