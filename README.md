@@ -2,24 +2,61 @@
 
 给经办用的邮件批量发送小工具：上传文件 → 自动解析类型/平台/客户 → 分组核对 → 一键发送。全程浏览器操作，数据留在本机。
 
+## 界面
+
+上传发送（拖拽区 + 文件名解析规则说明）：
+
+![上传发送页](docs/ui-upload.png)
+
+「手动添加」弹窗 —— 不依赖后端即可录入一封邮件，正文支持 Markdown 实时预览，保存后进入待发列表：
+
+![手动添加邮件弹窗](docs/ui-manual-entry.png)
+
+> 两张截图取自本仓库 `public/index.html` 的真实运行界面（`node server.js` 后浏览器打开）。
+> 截图前把页面示例文案里的机构名替换成了「某某银行」，仓库源码未改动。
+
+## 环境要求
+
+- **Node.js 18 或更高**（CI 在 Node 22 上跑；`npm test` / `npm run check` 均通过）。
+- 首次使用先执行 `npm install` 安装依赖（`exceljs` / `express` / `nodemailer` 等）。
+- 需要一个 Chrome/Chromium 或 Firefox 现代浏览器：页面用现代 JS 语法，**IE 完全不支持**。
+
+Windows 便携包内嵌的旧版 Node 发行目录（Win7 兼容用途）与源码要求是两件事，详见下方「Windows 便携包」。
+
 ## 目录结构
 ```
-mailer/
-├─ 启动.bat              # Windows 双击启动（Win7 可用）
+mail-batch-sender/
+├─ 启动.bat              # Windows 双击启动
 ├─ start.sh              # Mac / Linux 启动
 ├─ server.js             # 后端（Express + nodemailer）
+├─ send.js               # CLI 发送入口（预览模式）
 ├─ public/index.html     # 前端单页（原生 JS，零构建）
 ├─ lib/                  # 业务逻辑（配置/模板/发送/日志/账号）
-├─ config/邮件配置.xlsx  # 类型与平台配置（在界面里维护，不用碰文件）
 ├─ tools/                # 命令行小工具（导入模板 / 建配置 / 设账号）
+├─ tests/                # node:test 单测
 └─ data/                 # 运行时生成：发件账号凭据等（不入库）
 ```
 
+`config/邮件配置.xlsx` 首次运行时用 `npm run template` 生成（类型与平台配置建议直接在界面里维护）。
+
 ## 一键启动
-- **Windows**：双击 `启动.bat`，自动打开浏览器到 http://localhost:3000
-  - 便携包内嵌 Node 12.22.12（最后支持 Win7 的 LTS），Win7/Win10 均可双击即用
-- **Mac / Linux**：终端运行 `bash start.sh`
+- **Mac / Linux**：`npm install && npm start`，或 `bash start.sh`
+- **Windows**：双击 `启动.bat`（详见下方「Windows 便携包」）
+- 启动后浏览器打开 http://localhost:3000
 - **局域网访问（可选）**：默认仅本机可访问（服务只监听 `127.0.0.1`）。如需同一局域网内其他设备访问，启动时显式设置 `HOST=0.0.0.0`，例如 `HOST=0.0.0.0 node server.js`（Windows 命令行：`set HOST=0.0.0.0 && node server.js`）。注意：**无登录口令，仅限信任网络**。
+
+## Windows 便携包
+
+便携发行包内嵌了一份旧版 Node 运行时，目录名沿用历史命名 `node14/`，**里面装的是 Node 12.22.12**（最后支持 Win7 的 LTS）—— 目录名和实际版本不一致，这是已知的历史遗留。该目录**不纳入版本库**（见 `.gitignore` 的 `node14/`），clone 下来的源码里没有它。
+
+因此有两条路：
+
+| 场景 | 做法 |
+|---|---|
+| Win10+ | 装任意 Node 18+，直接 `npm install && npm start`，不需要便携运行时 |
+| Win7 | 需要自己准备 Node 12.22.12 可执行文件，放到仓库根目录的 `node14/node.exe`，再双击 `启动.bat` |
+
+`启动.bat` 的逻辑是：存在 `node14\node.exe` 就用它，否则回退到系统 `PATH` 里的 `node`。
 
 ## 浏览器要求（重要）
 - 页面用现代 JS 语法，**IE 完全不支持**（IE8–11 内核跑不了，会白屏），请不要用 IE。
@@ -54,6 +91,14 @@ mailer/
 - 发件账号凭据只存在本机 `data/accounts.json`，不随代码上传。
 
 ## 故障排查
-- 双击 `启动.bat` 没反应：确认 `node14\node.exe` 存在（须为 Node 12.x 以兼容 Win7），或系统已装 Node。
+- 双击 `启动.bat` 没反应：先确认系统里有 Node（`node -v`）。若在 Win7 上，需自行准备 Node 12 可执行文件放到 `node14/node.exe`（该目录不在仓库里）；Win7 缺 `GetHostNameW` 等 API 时新版 Node 会启动失败，具体报错见 `logs/mailer-error.log`。
 - 页面打不开：检查 3000 端口是否被占用；确认启动窗口还在。
+- 首屏报「预览模式」：说明后端没连上，静态页只能演示界面。确认 `server.js` 在跑。
 - 发送失败：看「日志」标签页的「运行报错日志」（logs/mailer-error.log），多半是授权码错或 SMTP 设置不对。
+
+## 测试
+
+```bash
+npm test        # node:test，覆盖 md 解析 / 模板渲染 / 计划分组
+npm run check   # 全量语法检查
+```
